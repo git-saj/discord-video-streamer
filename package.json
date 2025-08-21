@@ -1,0 +1,63 @@
+{
+  "name": "discord-video-stream-bot",
+  "version": "1.0.0",
+  "description": "High-performance Discord video streaming bot with slash commands",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js",
+    "lint": "biome lint --error-on-warnings .",
+    "lint:fix": "biome lint --write .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "type-check": "tsc --noEmit",
+    "pre-commit": "lint-staged",
+    "prepare": "husky install",
+    "test": "echo \"No tests yet\" && exit 0",
+    "approve-builds": "pnpm config set scripts-prepend-node-path true && pnpm config set ignore-scripts false",
+    "setup": "pnpm approve-builds && pnpm install && pnpm build"
+  },
+  "dependencies": {
+    "@dank074/discord-video-stream": "^5.0.2",
+    "discord.js-selfbot-v13": "^3.7.0",
+    "fluent-ffmpeg": "^2.1.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.0",
+    "@types/fluent-ffmpeg": "^2.1.27",
+    "@types/node": "^24.3.0",
+    "commitizen": "^4.3.1",
+    "cz-conventional-changelog": "^3.3.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.3.0",
+    "typescript": "^5.8.2"
+  },
+  "lint-staged": {
+    "*.{ts,js,json}": [
+      "biome format --write",
+      "biome lint --write"
+    ],
+    "*.ts": [
+      "tsc --noEmit"
+    ]
+  },
+  "config": {
+    "commitizen": {
+      "path": "./node_modules/cz-conventional-changelog"
+    }
+  },
+  "engines": {
+    "node": ">=21.0.0"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "video",
+    "streaming",
+    "slash-commands"
+  ],
+  "author": "",
+  "license": "MIT"
+}
