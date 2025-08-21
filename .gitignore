@@ -123,8 +123,8 @@ dist/
 ehthumbs.db
 Thumbs.db
 
-# Docker files
-.dockerignore
+# Docker files (removed - .dockerignore should be committed)
+# .dockerignore
 
 # Log files
 *.log
@@ -138,10 +138,10 @@ temp/
 *.tmp
 *.temp
 
-# Lock files
-pnpm-lock.yaml
-package-lock.json
-yarn.lock
+# Lock files (removed - these should be committed)
+# pnpm-lock.yaml
+# package-lock.json
+# yarn.lock
 
 # Runtime directories
 .cache/
