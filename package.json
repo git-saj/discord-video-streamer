@@ -49,14 +49,15 @@
     }
   },
   "engines": {
-    "node": ">=21.0.0"
+    "node": ">=24.0.0"
   },
   "keywords": [
     "discord",
     "bot",
     "video",
     "streaming",
-    "slash-commands"
+    "selfbot",
+    "message-commands"
   ],
   "author": "",
   "license": "MIT"

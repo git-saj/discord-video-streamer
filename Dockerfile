@@ -1,16 +1,16 @@
-# Use Node.js 21 Alpine as base image for smaller size
-FROM node:21-alpine AS base
+# Use Node.js 24 Alpine as base image for smaller size
+FROM node:24-alpine AS base
 
 # Install system dependencies required for the bot
 RUN apk add --no-cache \
-    ffmpeg=7.1.1-r0 \
-    python3=3.12.8-r1 \
-    make=4.4.1-r2 \
-    g++=13.2.1_git20240309-r0 \
-    pkgconfig=2.3.0-r0 \
-    libsodium-dev=1.0.20-r0 \
-    zeromq-dev=4.3.5-r2 \
-    git=2.45.2-r0
+    ffmpeg \
+    python3 \
+    make \
+    g++ \
+    pkgconfig \
+    libsodium-dev \
+    zeromq-dev \
+    git
 
 # Set working directory
 WORKDIR /app
@@ -19,7 +19,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml* ./
 
 # Install pnpm, dependencies, copy source, and build in consolidated steps
-RUN npm install -g pnpm@10.14.0 && \
+RUN npm install -g pnpm && \
     pnpm install --frozen-lockfile
 
 COPY . .
@@ -27,13 +27,13 @@ COPY . .
 RUN pnpm build
 
 # Create production stage
-FROM node:21-alpine AS production
+FROM node:24-alpine AS production
 
 # Install runtime dependencies
 RUN apk add --no-cache \
-    ffmpeg=7.1.1-r0 \
-    libsodium=1.0.20-r0 \
-    zeromq=4.3.5-r2
+    ffmpeg \
+    libsodium \
+    zeromq
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
@@ -46,7 +46,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml* ./
 
 # Install pnpm and production dependencies
-RUN npm install -g pnpm@10.14.0 && \
+RUN npm install -g pnpm && \
     pnpm install --frozen-lockfile --prod
 
 # Copy built application from base stage

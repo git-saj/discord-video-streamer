@@ -8,6 +8,7 @@ class DiscordStreamBot {
   private config: BotConfig;
   private currentController?: AbortController;
   private isStreaming = false;
+  private readonly commandPrefix = "!";
 
   constructor(config: BotConfig) {
     this.config = config;
@@ -21,29 +22,16 @@ class DiscordStreamBot {
       console.log(`🚀 Bot is ready! Logged in as ${this.client.user?.tag}`);
       console.log(`📺 Configured for guild: ${this.config.guildId}`);
       console.log(`🔊 Target channel: ${this.config.channelId}`);
+      console.log(`🎮 Command prefix: ${this.commandPrefix}`);
       console.log("");
-      console.log("✨ This bot responds to slash command interactions");
-      console.log("📋 Available interactions: /stream, /stop, /disconnect, /status");
-      console.log("⚠️  Note: As a selfbot, commands must be created by other bots");
+      console.log("Available commands:");
+      console.log(`  ${this.commandPrefix}stream <url> - Start streaming from URL`);
+      console.log(`  ${this.commandPrefix}stop - Stop current stream`);
+      console.log(`  ${this.commandPrefix}disconnect - Disconnect from voice`);
+      console.log(`  ${this.commandPrefix}status - Show bot status`);
+      console.log(`  ${this.commandPrefix}help - Show help message`);
     });
 
-    // Handle slash command interactions
-    this.client.on("interactionCreate", async (interaction) => {
-      if (!interaction.isCommand()) return;
-
-      // Check if user is authorized
-      if (!this.config.allowedUserIds.includes(interaction.user.id)) {
-        await interaction.reply({
-          content: "❌ You are not authorized to use this bot.",
-          ephemeral: true,
-        });
-        return;
-      }
-
-      await this.handleSlashCommand(interaction);
-    });
-
-    // Fallback to message commands for development/testing
     this.client.on("messageCreate", async (message) => {
       if (message.author.bot) return;
 
@@ -52,12 +40,12 @@ class DiscordStreamBot {
         return;
       }
 
-      // Check if message starts with ! prefix
-      if (!message.content.startsWith("!")) {
+      // Check if message starts with command prefix
+      if (!message.content.startsWith(this.commandPrefix)) {
         return;
       }
 
-      await this.handleMessageCommand(message);
+      await this.handleCommand(message);
     });
 
     this.client.on("error", (error) => {
@@ -78,125 +66,59 @@ class DiscordStreamBot {
     });
   }
 
-  private async handleSlashCommand(interaction: any): Promise<void> {
-    const { commandName } = interaction;
-
-    try {
-      switch (commandName) {
-        case "stream":
-          await this.handleStreamCommand(interaction);
-          break;
-        case "stop":
-          await this.handleStopCommand(interaction);
-          break;
-        case "disconnect":
-          await this.handleDisconnectCommand(interaction);
-          break;
-        case "status":
-          await this.handleStatusCommand(interaction);
-          break;
-        default:
-          await interaction.reply({
-            content: "❌ Unknown command.",
-            ephemeral: true,
-          });
-      }
-    } catch (error) {
-      console.error(`❌ Error handling slash command ${commandName}:`, error);
-
-      if (!interaction.replied && !interaction.deferred) {
-        try {
-          await interaction.reply({
-            content: "❌ An error occurred while processing the command.",
-            ephemeral: true,
-          });
-        } catch (replyError) {
-          console.error("Failed to send error reply:", replyError);
-        }
-      }
-    }
-  }
-
-  private async handleMessageCommand(message: any): Promise<void> {
-    const args = message.content.slice(1).trim().split(/ +/);
+  private async handleCommand(message: any): Promise<void> {
+    const args = message.content.slice(this.commandPrefix.length).trim().split(/ +/);
     const command = args.shift()?.toLowerCase();
 
     try {
       switch (command) {
         case "stream":
-          await this.handleStreamMessageCommand(message, args);
+          await this.handleStreamCommand(message, args);
           break;
         case "stop":
-          await this.handleStopMessageCommand(message);
+          await this.handleStopCommand(message);
           break;
         case "disconnect":
-          await this.handleDisconnectMessageCommand(message);
+          await this.handleDisconnectCommand(message);
           break;
         case "status":
-          await this.handleStatusMessageCommand(message);
+          await this.handleStatusCommand(message);
           break;
         case "help":
           await this.handleHelpCommand(message);
           break;
         default:
-          await message.reply("❌ Unknown command. Use `!help` for available commands.");
+          await message.reply(
+            `❌ Unknown command. Use \`${this.commandPrefix}help\` for available commands.`
+          );
       }
     } catch (error) {
-      console.error(`❌ Error handling message command ${command}:`, error);
+      console.error(`❌ Error handling command ${command}:`, error);
       await message.reply("❌ An error occurred while processing the command.");
     }
   }
 
-  private async handleStreamCommand(interaction: any): Promise<void> {
-    const url = interaction.options.getString("url");
-    await this.startStream(url, interaction, true);
-  }
-
-  private async handleStreamMessageCommand(message: any, args: string[]): Promise<void> {
+  private async handleStreamCommand(message: any, args: string[]): Promise<void> {
     if (args.length === 0) {
-      await message.reply("❌ Please provide a URL. Usage: `!stream <url>`");
+      await message.reply(`❌ Please provide a URL. Usage: \`${this.commandPrefix}stream <url>\``);
       return;
     }
-    const url = args.join(" ");
-    await this.startStream(url, message, false);
-  }
 
-  private async startStream(url: string, context: any, isInteraction: boolean): Promise<void> {
+    const url = args.join(" ");
+
     if (!validateStreamUrl(url)) {
-      const errorMsg = "❌ Invalid URL. Please provide a valid HTTP, HTTPS, or RTMP URL.";
-      if (isInteraction) {
-        await context.reply({
-          content: errorMsg,
-          ephemeral: true,
-        });
-      } else {
-        await context.reply(errorMsg);
-      }
+      await message.reply("❌ Invalid URL. Please provide a valid HTTP, HTTPS, or RTMP URL.");
       return;
     }
 
     if (this.isStreaming) {
-      const errorMsg =
-        "⚠️ Already streaming! Use `/stop` or `!stop` to stop the current stream first.";
-      if (isInteraction) {
-        await context.reply({
-          content: errorMsg,
-          ephemeral: true,
-        });
-      } else {
-        await context.reply(errorMsg);
-      }
+      await message.reply(
+        `⚠️ Already streaming! Use \`${this.commandPrefix}stop\` to stop the current stream first.`
+      );
       return;
     }
 
-    if (isInteraction) {
-      await context.deferReply();
-    }
-
-    let statusMsg: any = null;
-    if (!isInteraction) {
-      statusMsg = await context.reply("🔄 Preparing to stream...");
-    }
+    const statusMsg = await message.reply("🔄 Preparing to stream...");
 
     try {
       // Join voice channel
@@ -243,13 +165,7 @@ class DiscordStreamBot {
 
       const successMsg = `✅ Started streaming: \`${url}\`\n🎬 Resolution: ${this.config.streamOpts.width}x${this.config.streamOpts.height} @ ${this.config.streamOpts.fps}fps\n📊 Bitrate: ${this.config.streamOpts.bitrateKbps}kbps`;
 
-      if (isInteraction) {
-        await context.editReply({
-          content: successMsg,
-        });
-      } else {
-        await statusMsg?.edit(successMsg);
-      }
+      await statusMsg?.edit(successMsg);
 
       // Start streaming
       await playStream(output, this.streamer, undefined, this.currentController.signal);
@@ -266,41 +182,11 @@ class DiscordStreamBot {
       }
 
       const errorMsg = `❌ Failed to start stream: ${error.message}`;
-
-      try {
-        if (isInteraction) {
-          await context.editReply({
-            content: errorMsg,
-          });
-        } else {
-          await statusMsg?.edit(errorMsg);
-        }
-      } catch (editError) {
-        console.error("Failed to edit reply:", editError);
-      }
+      await statusMsg?.edit(errorMsg);
     }
   }
 
-  private async handleStopCommand(interaction: any): Promise<void> {
-    if (!this.isStreaming) {
-      await interaction.reply({
-        content: "⚠️ No stream is currently active.",
-        ephemeral: true,
-      });
-      return;
-    }
-
-    this.currentController?.abort();
-    this.isStreaming = false;
-
-    await interaction.reply({
-      content: "🛑 Stream stopped successfully.",
-    });
-
-    console.log("🛑 Stream stopped by slash command");
-  }
-
-  private async handleStopMessageCommand(message: any): Promise<void> {
+  private async handleStopCommand(message: any): Promise<void> {
     if (!this.isStreaming) {
       await message.reply("⚠️ No stream is currently active.");
       return;
@@ -310,44 +196,19 @@ class DiscordStreamBot {
     this.isStreaming = false;
 
     await message.reply("🛑 Stream stopped successfully.");
-    console.log("🛑 Stream stopped by message command");
+    console.log("🛑 Stream stopped by user command");
   }
 
-  private async handleDisconnectCommand(interaction: any): Promise<void> {
-    this.currentController?.abort();
-    this.isStreaming = false;
-    this.streamer.leaveVoice();
-
-    await interaction.reply({
-      content: "👋 Disconnected from voice channel and stopped streaming.",
-    });
-
-    console.log("👋 Disconnected from voice channel via slash command");
-  }
-
-  private async handleDisconnectMessageCommand(message: any): Promise<void> {
+  private async handleDisconnectCommand(message: any): Promise<void> {
     this.currentController?.abort();
     this.isStreaming = false;
     this.streamer.leaveVoice();
 
     await message.reply("👋 Disconnected from voice channel and stopped streaming.");
-    console.log("👋 Disconnected from voice channel via message command");
+    console.log("👋 Disconnected from voice channel");
   }
 
-  private async handleStatusCommand(interaction: any): Promise<void> {
-    const statusMessage = this.getStatusMessage();
-    await interaction.reply({
-      content: statusMessage,
-      ephemeral: true,
-    });
-  }
-
-  private async handleStatusMessageCommand(message: any): Promise<void> {
-    const statusMessage = this.getStatusMessage();
-    await message.reply(statusMessage);
-  }
-
-  private getStatusMessage(): string {
+  private async handleStatusCommand(message: any): Promise<void> {
     const voiceConnection = this.streamer.voiceConnection;
     const isConnected = !!voiceConnection;
 
@@ -367,20 +228,18 @@ class DiscordStreamBot {
     statusMessage += `🎥 Codec: ${this.config.streamOpts.videoCodec}\n`;
     statusMessage += `⚡ Hardware Acceleration: ${this.config.streamOpts.hardwareAcceleration ? "✅ Enabled" : "❌ Disabled"}`;
 
-    return statusMessage;
+    await message.reply(statusMessage);
   }
 
   private async handleHelpCommand(message: any): Promise<void> {
     const helpMessage =
       `🎬 **Discord Video Stream Bot Help**\n\n` +
       `**Available Commands:**\n` +
-      `\`!stream <url>\` - Start streaming from URL\n` +
-      `\`!stop\` - Stop the current stream\n` +
-      `\`!disconnect\` - Disconnect from voice channel\n` +
-      `\`!status\` - Show bot and stream status\n` +
-      `\`!help\` - Show this help message\n\n` +
-      `**Slash Commands:**\n` +
-      `Also responds to \`/stream\`, \`/stop\`, \`/disconnect\`, \`/status\` if available\n\n` +
+      `\`${this.commandPrefix}stream <url>\` - Start streaming from URL\n` +
+      `\`${this.commandPrefix}stop\` - Stop the current stream\n` +
+      `\`${this.commandPrefix}disconnect\` - Disconnect from voice channel\n` +
+      `\`${this.commandPrefix}status\` - Show bot and stream status\n` +
+      `\`${this.commandPrefix}help\` - Show this help message\n\n` +
       `**Supported URLs:**\n` +
       `• Direct video files (MP4, MKV, AVI, etc.)\n` +
       `• Livestreams (HLS, DASH, RTMP)\n` +

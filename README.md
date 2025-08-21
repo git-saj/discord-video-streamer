@@ -4,13 +4,13 @@
 [![Code Quality](https://img.shields.io/badge/code%20quality-biome-60a5fa)](https://biomejs.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A high-performance Discord bot for streaming videos from URLs using slash commands. Built with TypeScript and 
+A high-performance Discord bot for streaming videos from URLs using message commands. Built with TypeScript and
 optimized for 1080p 30fps streaming.
 
 ## Features ✨
 
 - 🎬 **High Quality Streaming**: 1080p 30fps video streaming
-- ⚡ **Dual Command Support**: Both message commands and slash command interactions
+- ⚡ **Message Commands**: Simple and reliable message-based command interface
 - 🔗 **URL Support**: Stream from HTTP, HTTPS, and RTMP URLs
 - 🛡️ **User Authorization**: Configurable user access control
 - 🐳 **Docker Ready**: Easy deployment with Docker and docker-compose
@@ -22,7 +22,7 @@ optimized for 1080p 30fps streaming.
 
 ## Requirements 📋
 
-- Node.js 21 or higher
+- Node.js 24 or higher
 - FFmpeg
 - Discord Bot Token (using discord.js-selfbot-v13@3.7.0)
 - Guild and Channel IDs where the bot will operate
@@ -150,11 +150,9 @@ docker run -d \
 
 ## Usage 🎮
 
-Once the bot is running and connected to Discord, you can use commands in two ways:
+Once the bot is running and connected to Discord, you can use these message commands:
 
-### Message Commands (Always Available)
-
-Use these commands by typing them in chat:
+### Available Commands
 
 - `!stream <url>` - Start streaming from URL
 - `!stop` - Stop the current stream
@@ -167,23 +165,6 @@ Use these commands by typing them in chat:
 ```bash
 !stream https://example.com/video.mp4
 ```
-
-### Slash Commands (If Available)
-
-The bot also responds to slash command interactions:
-
-- `/stream <url>` - Start streaming from URL
-- `/stop` - Stop the current stream
-- `/disconnect` - Disconnect from voice channel
-- `/status` - Check bot status
-
-**Example:**
-
-```bash
-/stream url:https://example.com/video.mp4
-```
-
-**Note:** As a selfbot, it cannot create slash commands but can respond to them if they exist.
 
 **Supported URL types:**
 
@@ -244,8 +225,7 @@ The bot also responds to slash command interactions:
    - Try different video codecs
 
 4. **Bot not responding to commands**
-   - For message commands: Make sure they start with `!` prefix
-   - For slash commands: These need to be created by another bot
+   - Make sure commands start with `!` prefix
    - Ensure bot is in the correct guild/channel
    - Check user permissions in allowedUserIds
    - Try using `!help` to test basic functionality

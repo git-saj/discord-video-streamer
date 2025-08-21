@@ -7,7 +7,7 @@ on:
     branches: [main, develop]
 
 env:
-  NODE_VERSION: "21"
+  NODE_VERSION: "24"
   PNPM_VERSION: "9"
 
 jobs:
