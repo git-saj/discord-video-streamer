@@ -14,6 +14,7 @@ export interface StreamConfig {
 export interface BotConfig {
   token: string;
   streamOpts: StreamConfig;
+  allowWebhooks: boolean;
 }
 
 const DEFAULT_CONFIG: BotConfig = {
@@ -27,6 +28,7 @@ const DEFAULT_CONFIG: BotConfig = {
     hardwareAcceleration: false,
     videoCodec: "H264",
   },
+  allowWebhooks: true,
 };
 
 export async function loadConfig(configPath: string = "./config.json"): Promise<BotConfig> {

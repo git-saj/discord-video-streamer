@@ -22,7 +22,7 @@ optimized for 1080p 30fps streaming.
 
 ## Requirements 📋
 
-- Node.js 24 or higher
+- Node.js 22 or higher
 - FFmpeg
 - Discord Bot Token (using discord.js-selfbot-v13@3.7.0)
 
@@ -40,12 +40,31 @@ cd discord-video-streamer
 # Enter the development shell (installs all dependencies)
 nix-shell
 
-# Copy and configure the config file
-cp config.example.json config.json
-# Edit config.json with your settings
+# Run the automated setup script
+./scripts/setup.sh
 
-# Build and run the bot
-pnpm dev
+# Edit config.json with your settings
+# (setup.sh creates it from config.example.json)
+
+# Run the bot
+pnpm start
+```
+
+### Automated Setup (Recommended)
+
+```bash
+# Clone the repository
+git clone <your-repo-url>
+cd discord-video-streamer
+
+# Run the automated setup script
+./scripts/setup.sh
+
+# Edit config.json with your Discord bot settings
+# (setup.sh creates it from config.example.json)
+
+# Run the bot
+pnpm start
 ```
 
 ### Manual Setup
@@ -55,7 +74,7 @@ pnpm dev
 git clone <your-repo-url>
 cd discord-video-streamer
 
-# Install Node.js 21+, FFmpeg, and other system dependencies
+# Install Node.js 22+, FFmpeg, and other system dependencies
 # On Ubuntu/Debian:
 sudo apt update
 sudo apt install nodejs npm ffmpeg python3 make g++ pkg-config libsodium-dev libzmq3-dev
@@ -248,6 +267,11 @@ console.log('%cYou now have your token in the clipboard!', 'font-size: 16px');
    - Try using `!help` to test basic functionality
    - Check that your Discord token is valid
 
+5. **First-time setup issues**
+   - Use the automated setup script: `./scripts/setup.sh`
+   - This checks dependencies, installs packages, and creates config.json
+   - Make sure to edit config.json with your Discord token after setup
+
 ### Debug Mode
 
 Run with debug logging:
@@ -265,6 +289,8 @@ discord-video-streamer/
 ├── src/
 │   ├── index.ts          # Main bot implementation
 │   └── config.ts         # Configuration management
+├── scripts/
+│   └── setup.sh          # Automated setup script
 ├── config.example.json   # Example configuration
 ├── Dockerfile           # Container configuration
 ├── docker-compose.yml   # Docker Compose setup
@@ -275,15 +301,16 @@ discord-video-streamer/
 ### Available Scripts
 
 ```bash
-pnpm build       # Build TypeScript
-pnpm start       # Run compiled bot
-pnpm dev         # Build and run in one command
-pnmp lint        # Run linting
-pnmp lint:fix    # Fix linting issues
-pnpm format      # Format code with Biome
-pnmp format:check # Check code formatting
-pnpm type-check  # TypeScript type checking
-git cz           # Commit with conventional commit format
+./scripts/setup.sh  # Automated setup script (recommended for first-time setup)
+pnpm build          # Build TypeScript
+pnpm start          # Run compiled bot
+pnpm dev            # Build and run in one command
+pnpm lint           # Run linting
+pnpm lint:fix       # Fix linting issues
+pnpm format         # Format code with Biome
+pnpm format:check   # Check code formatting
+pnpm type-check     # TypeScript type checking
+git cz              # Commit with conventional commit format
 ```
 
 ### Pre-commit Hooks
@@ -359,7 +386,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - **Dynamic Voice Channel Joining**: Automatically joins your current voice channel
 - **Universal Access**: Works anywhere you have the bot running
 - **Message Commands**: Simple `!command` interface (no slash commands - they don't work with selfbots)
-- **Node.js 24**: Latest LTS with optimal performance and security
+- **Node.js 22+**: Modern LTS with optimal performance and security
 - **TypeScript**: Full type safety and modern development experience
 - **Docker Ready**: Multi-stage build with Alpine Linux for minimal size
 
@@ -394,7 +421,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Built with [@dank074/discord-video-stream](https://github.com/dank074/Discord-video-stream) v5.0.2
 - Uses [discord.js-selfbot-v13](https://github.com/aiko-chan-ai/discord.js-selfbot-v13) v3.7.0
 - Powered by FFmpeg for video processing
-- Modern tooling with Biome v2.2.0, TypeScript v5.9.2, and Node.js 24 LTS
+- Modern tooling with Biome v2.2.0, TypeScript v5.9.2, and Node.js 22+ LTS
 - Enterprise-grade quality with pre-commit hooks and comprehensive CI/CD
 
 ## Support 💬

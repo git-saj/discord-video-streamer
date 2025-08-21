@@ -1,69 +1,93 @@
-# Use Node.js 24 Alpine as base image for smaller size
-FROM node:24-alpine AS base
+# Multi-stage Ubuntu Dockerfile optimized for libav.js WASM compatibility
+FROM node:24-bookworm AS base
 
-# Install system dependencies required for the bot
-RUN apk add --no-cache \
+# Install build dependencies and runtime libraries
+RUN apt-get update && apt-get install -y \
     ffmpeg \
     python3 \
     make \
     g++ \
-    pkgconfig \
+    pkg-config \
     libsodium-dev \
-    zeromq-dev \
-    git
+    libzmq3-dev \
+    git \
+    ca-certificates \
+    curl \
+    dumb-init \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package.json pnpm-lock.yaml* ./
+# Copy package files first for better Docker layer caching
+COPY package.json pnpm-lock.yaml ./
 
-# Install pnpm, dependencies, copy source, and build in consolidated steps
-RUN npm install -g pnpm && \
+# Install pnpm and all dependencies (including dev for build)
+RUN npm install -g pnpm@latest && \
+    pnpm config set ignore-scripts false && \
     pnpm install --frozen-lockfile
 
+# Copy source code
 COPY . .
 
+# Build the application
 RUN pnpm build
 
-# Create production stage
-FROM node:24-alpine AS production
+# Production stage - create minimal runtime image
+FROM node:24-bookworm-slim AS production
 
-# Install runtime dependencies
-RUN apk add --no-cache \
+# Install only runtime dependencies
+RUN apt-get update && apt-get install -y \
     ffmpeg \
-    libsodium \
-    zeromq
+    libsodium23 \
+    libzmq5 \
+    ca-certificates \
+    curl \
+    dumb-init \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Create non-root user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S discordbot -u 1001
+RUN groupadd -g 1001 nodejs && \
+    useradd -r -u 1001 -g nodejs discordbot
 
 # Set working directory
 WORKDIR /app
 
 # Copy package files
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json pnpm-lock.yaml ./
 
-# Install pnpm and production dependencies
-RUN npm install -g pnpm && \
-    pnpm install --frozen-lockfile --prod
+# Install pnpm and production dependencies only, skipping scripts
+RUN npm install -g pnpm@latest && \
+    pnpm config set ignore-scripts true && \
+    pnpm install --frozen-lockfile --prod && \
+    npm cache clean --force && \
+    pnpm store prune
 
 # Copy built application from base stage
-COPY --from=base /app/dist ./dist
+COPY --from=base --chown=discordbot:nodejs /app/dist ./dist
+COPY --chown=discordbot:nodejs package.json ./
 
-# Change ownership to non-root user
-RUN chown -R discordbot:nodejs /app
+# Create logs directory with proper permissions
+RUN mkdir -p logs && \
+    chown -R discordbot:nodejs /app && \
+    chmod -R 755 /app
 
 # Switch to non-root user
 USER discordbot
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD node -e "console.log('Health check passed')" || exit 1
+# Set Node.js production environment variables
+ENV NODE_ENV=production
+ENV NODE_OPTIONS="--max-old-space-size=2048"
+# FFmpeg threading for better performance
+ENV FFMPEG_THREADS=4
 
-# Expose port (if needed for future web interface)
-EXPOSE 3000
+# Health check to ensure container is running properly
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD node -e "process.exit(0)" || exit 1
+
+# Use dumb-init to handle signals properly in containers
+ENTRYPOINT ["dumb-init", "--"]
 
 # Start the bot
-CMD ["pnpm", "start"]
+CMD ["node", "dist/index.js"]

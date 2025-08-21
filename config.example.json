@@ -1,5 +1,6 @@
 {
   "token": "YOUR_DISCORD_BOT_TOKEN_HERE",
+  "allowWebhooks": true,
   "streamOpts": {
     "width": 1920,
     "height": 1080,

@@ -1,6 +1,15 @@
 import { Client, StageChannel } from "discord.js-selfbot-v13";
-import { Streamer, Utils, prepareStream, playStream } from "@dank074/discord-video-stream";
+import { Streamer, playStream } from "@dank074/discord-video-stream";
 import { loadConfig, validateStreamUrl, type BotConfig } from "./config.js";
+import ffmpeg from "fluent-ffmpeg";
+import { PassThrough } from "node:stream";
+import {
+  botLogger,
+  streamLogger,
+  discordLogger,
+  logFFmpegOutput,
+  logStreamStatus,
+} from "./logger.js";
 
 class DiscordStreamBot {
   private client: Client;
@@ -8,6 +17,7 @@ class DiscordStreamBot {
   private config: BotConfig;
   private currentController?: AbortController;
   private isStreaming = false;
+  private currentStreamUrl?: string;
   private readonly commandPrefix = "!";
 
   constructor(config: BotConfig) {
@@ -17,22 +27,64 @@ class DiscordStreamBot {
     this.setupEventHandlers();
   }
 
+  private updatePresence(): void {
+    const statusText = this.isStreaming
+      ? `🔴 Live | ${this.currentStreamUrl?.split("/").pop() || "Stream"}`
+      : `✅ ${this.commandPrefix}help | ${this.config.streamOpts.width}x${this.config.streamOpts.height}@${this.config.streamOpts.fps}fps`;
+
+    this.client.user?.setActivity(statusText, {
+      type: this.isStreaming ? "STREAMING" : "WATCHING",
+    });
+  }
+
   private setupEventHandlers(): void {
     this.client.on("ready", () => {
-      console.log(`🚀 Bot is ready! Logged in as ${this.client.user?.tag}`);
-      console.log(`🔊 Will join the user's current voice channel automatically`);
-      console.log(`🎮 Command prefix: ${this.commandPrefix}`);
-      console.log("");
-      console.log("Available commands:");
-      console.log(`  ${this.commandPrefix}stream <url> - Start streaming from URL`);
-      console.log(`  ${this.commandPrefix}stop - Stop current stream`);
-      console.log(`  ${this.commandPrefix}disconnect - Disconnect from voice`);
-      console.log(`  ${this.commandPrefix}status - Show bot status`);
-      console.log(`  ${this.commandPrefix}help - Show help message`);
+      // Set initial bot presence
+      this.updatePresence();
+
+      botLogger.info("Bot is ready!", {
+        user: this.client.user?.tag,
+        userId: this.client.user?.id,
+        prefix: this.commandPrefix,
+        webhooksAllowed: this.config.allowWebhooks,
+        guilds: this.client.guilds.cache.size,
+      });
+      botLogger.info("Available commands:", {
+        commands: [
+          `${this.commandPrefix}stream [--channel-id <id>] <url> - Start streaming from URL`,
+          `${this.commandPrefix}stop - Stop current stream`,
+          `${this.commandPrefix}disconnect - Disconnect from voice`,
+          `${this.commandPrefix}status - Show bot status`,
+          `${this.commandPrefix}help - Show help message`,
+        ],
+      });
+      botLogger.info("Bot configuration:", {
+        streamWidth: this.config.streamOpts.width,
+        streamHeight: this.config.streamOpts.height,
+        streamFps: this.config.streamOpts.fps,
+        streamBitrate: this.config.streamOpts.bitrateKbps,
+        hardwareAcceleration: this.config.streamOpts.hardwareAcceleration,
+        videoCodec: this.config.streamOpts.videoCodec,
+      });
     });
 
     this.client.on("messageCreate", async (message) => {
-      if (message.author.bot) return;
+      // Filter out bots and optionally webhooks based on config
+      if (message.author.bot && (!this.config.allowWebhooks || !message.webhookId)) return;
+
+      // Log webhook messages for debugging
+      if (message.webhookId) {
+        botLogger.info("Webhook message received", {
+          webhookId: message.webhookId,
+          content: message.content,
+          authorTag: message.author.tag,
+          authorId: message.author.id,
+          channelId: message.channelId,
+          guildId: message.guildId,
+          allowed: this.config.allowWebhooks,
+          timestamp: new Date().toISOString(),
+        });
+      }
 
       // Check if message starts with command prefix
       if (!message.content.startsWith(this.commandPrefix)) {
@@ -43,18 +95,21 @@ class DiscordStreamBot {
     });
 
     this.client.on("error", (error) => {
-      console.error("❌ Discord client error:", error);
+      discordLogger.error("Discord client error", {
+        error: error.message,
+        stack: error.stack,
+      });
     });
 
     // Handle graceful shutdown
     process.on("SIGINT", () => {
-      console.log("\n🛑 Shutting down bot...");
+      botLogger.warn("Received SIGINT, shutting down gracefully...");
       this.cleanup();
       process.exit(0);
     });
 
     process.on("SIGTERM", () => {
-      console.log("\n🛑 Shutting down bot...");
+      botLogger.warn("Received SIGTERM, shutting down gracefully...");
       this.cleanup();
       process.exit(0);
     });
@@ -63,6 +118,20 @@ class DiscordStreamBot {
   private async handleCommand(message: any): Promise<void> {
     const args = message.content.slice(this.commandPrefix.length).trim().split(/ +/);
     const command = args.shift()?.toLowerCase();
+
+    // Log all received commands
+    botLogger.info("Command received", {
+      command: command,
+      args: args.length > 0 ? args : undefined,
+      fullContent: message.content,
+      userId: message.author.id,
+      userTag: message.author.tag,
+      username: message.author.username,
+      guildId: message.guildId,
+      channelId: message.channelId,
+      webhookId: message.webhookId || undefined,
+      isWebhook: !!message.webhookId,
+    });
 
     try {
       switch (command) {
@@ -82,53 +151,150 @@ class DiscordStreamBot {
           await this.handleHelpCommand(message);
           break;
         default:
+          botLogger.warn("Unknown command attempted", {
+            command: command,
+            userId: message.author.id,
+            userTag: message.author.tag,
+          });
           await message.reply(
             `❌ Unknown command. Use \`${this.commandPrefix}help\` for available commands.`
           );
       }
+
+      // Log successful command completion
+      botLogger.info("Command completed successfully", {
+        command: command,
+        userId: message.author.id,
+        userTag: message.author.tag,
+      });
     } catch (error) {
-      console.error(`❌ Error handling command ${command}:`, error);
+      botLogger.error("Error handling command", {
+        command,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        userId: message.author.id,
+        userTag: message.author.tag,
+        args: args.length > 0 ? args : undefined,
+      });
       await message.reply("❌ An error occurred while processing the command.");
     }
   }
 
   private async handleStreamCommand(message: any, args: string[]): Promise<void> {
     if (args.length === 0) {
-      await message.reply(`❌ Please provide a URL. Usage: \`${this.commandPrefix}stream <url>\``);
+      await message.reply(
+        `❌ Please provide a URL. Usage: \`${this.commandPrefix}stream [--channel-id <channel_id>] <url>\``
+      );
       return;
     }
 
-    const url = args.join(" ");
+    // Parse arguments for --channel-id option
+    let channelId: string | null = null;
+    const urlArgs = [...args];
+
+    const channelIdIndex = args.indexOf("--channel-id");
+    if (channelIdIndex !== -1 && channelIdIndex + 1 < args.length) {
+      channelId = args[channelIdIndex + 1];
+      // Remove --channel-id and its value from urlArgs
+      urlArgs.splice(channelIdIndex, 2);
+    }
+
+    const url = urlArgs.join(" ");
 
     if (!validateStreamUrl(url)) {
+      botLogger.warn("Invalid stream URL provided", {
+        url: url,
+        userId: message.author.id,
+        userTag: message.author.tag,
+      });
       await message.reply("❌ Invalid URL. Please provide a valid HTTP, HTTPS, or RTMP URL.");
       return;
     }
 
+    // Log stream command details
+    streamLogger.info("Stream command initiated", {
+      url: url,
+      channelId: channelId,
+      userId: message.author.id,
+      userTag: message.author.tag,
+      isWebhook: !!message.webhookId,
+      isChannelSwitch: this.isStreaming,
+      currentStream: this.currentStreamUrl,
+    });
+
     if (this.isStreaming) {
-      await message.reply(
-        `⚠️ Already streaming! Use \`${this.commandPrefix}stop\` to stop the current stream first.`
-      );
-      return;
+      streamLogger.info("Switching to new stream", {
+        oldStream: this.currentStreamUrl,
+        newStream: url,
+      });
+      await message.reply("🔄 Switching to new stream...");
+
+      // Stop current stream and wait for cleanup
+      if (this.currentController) {
+        this.currentController.abort();
+        delete this.currentController;
+      }
+      this.isStreaming = false;
+      delete this.currentStreamUrl;
+
+      // Give time for the stream to properly close
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
-    // Check if user is in a voice channel
-    const voiceChannel = message.author.voice?.channel;
-    if (!voiceChannel) {
-      await message.reply(
-        "❌ You need to be in a voice channel first! Please join a voice channel and try again."
-      );
-      return;
+    // Determine target voice channel
+    let voiceChannel: any;
+
+    if (channelId) {
+      // Try to fetch the specified channel
+      try {
+        const targetChannel = await this.client.channels.fetch(channelId);
+        if (!targetChannel || !("joinable" in targetChannel) || !("speakable" in targetChannel)) {
+          // Check if it's a voice-capable channel using duck typing
+          await message.reply(`❌ Channel ID \`${channelId}\` is not a valid voice channel.`);
+          return;
+        }
+        voiceChannel = targetChannel;
+
+        botLogger.info("Using specified channel ID", {
+          channelId: channelId,
+          channelName: voiceChannel.name,
+        });
+      } catch (_error) {
+        await message.reply(
+          `❌ Could not find voice channel with ID \`${channelId}\`. Please check the channel ID.`
+        );
+        return;
+      }
+    } else {
+      // Use user's current voice channel
+      voiceChannel = message.author.voice?.channel;
+      if (!voiceChannel) {
+        await message.reply(
+          "❌ You need to be in a voice channel first! Please join a voice channel or use `--channel-id <channel_id>` to specify one."
+        );
+        return;
+      }
     }
 
     const statusMsg = await message.reply("🔄 Preparing to stream...");
 
     try {
-      // Join the user's voice channel
-      console.log(
-        `🔊 Joining voice channel ${message.guildId}/${voiceChannel.id} (${voiceChannel.name})`
-      );
-      await this.streamer.joinVoice(message.guildId!, voiceChannel.id);
+      // Only join if not already in the target channel
+      const currentConnection = this.streamer.voiceConnection;
+      if (!currentConnection || currentConnection.channelId !== voiceChannel.id) {
+        botLogger.info("Joining voice channel", {
+          guildId: message.guildId || voiceChannel.guildId,
+          channelId: voiceChannel.id,
+          channelName: voiceChannel.name,
+          specifiedById: !!channelId,
+        });
+        await this.streamer.joinVoice(voiceChannel.guildId, voiceChannel.id);
+      } else {
+        botLogger.info("Already in target channel, skipping rejoin", {
+          channelId: voiceChannel.id,
+          channelName: voiceChannel.name,
+        });
+      }
 
       // Handle stage channels
       if (voiceChannel instanceof StageChannel) {
@@ -139,54 +305,169 @@ class DiscordStreamBot {
       this.currentController?.abort();
       this.currentController = new AbortController();
 
-      console.log(`📺 Preparing stream for URL: ${url}`);
+      this.currentStreamUrl = url;
+      streamLogger.info("Preparing stream", { url });
 
-      const { command, output } = prepareStream(
-        url,
-        {
-          width: this.config.streamOpts.width,
-          height: this.config.streamOpts.height,
-          frameRate: this.config.streamOpts.fps,
-          bitrateVideo: this.config.streamOpts.bitrateKbps,
-          bitrateVideoMax: this.config.streamOpts.maxBitrateKbps,
-          hardwareAcceleratedDecoding: this.config.streamOpts.hardwareAcceleration,
-          videoCodec: Utils.normalizeVideoCodec(this.config.streamOpts.videoCodec),
+      // Create FFmpeg stream with simpler transcoding settings
+      const output = new PassThrough();
+      const command = ffmpeg(url);
+
+      // Basic input options
+      command.inputOptions(["-re", "-analyzeduration", "10000000", "-probesize", "10000000"]);
+
+      // Simple output configuration
+      command
+        .outputFormat("matroska")
+        .videoCodec("libx264")
+        .size(`${this.config.streamOpts.width}x${this.config.streamOpts.height}`)
+        .fps(this.config.streamOpts.fps)
+        .videoBitrate(`${this.config.streamOpts.bitrateKbps}k`)
+        .audioCodec("libopus")
+        .audioChannels(2)
+        .audioFrequency(48000)
+        .audioBitrate("128k");
+
+      // Add essential output options
+      command.outputOptions([
+        "-preset",
+        "veryfast",
+        "-tune",
+        "zerolatency",
+        "-pix_fmt",
+        "yuv420p",
+        "-profile:v",
+        "baseline",
+        "-level",
+        "3.1",
+        "-g",
+        String(this.config.streamOpts.fps * 2),
+        "-map",
+        "0:v:0",
+        "-map",
+        "0:a:0?",
+      ]);
+
+      // Output to PassThrough stream
+      command.output(output);
+
+      command.on("stderr", (line) => logFFmpegOutput(line));
+
+      // Handle FFmpeg errors (but not SIGTERM which is normal shutdown)
+      command.on("error", (error) => {
+        if (!error.message.includes("signal 15") && !error.message.includes("code 255")) {
+          streamLogger.error("FFmpeg process error", {
+            error: error.message,
+            url: this.currentStreamUrl,
+          });
+        } else {
+          streamLogger.debug("FFmpeg terminated normally", {
+            error: error.message,
+            url: this.currentStreamUrl,
+          });
+        }
+      });
+
+      command.on("end", () => {
+        streamLogger.info("FFmpeg process ended", {
+          url: this.currentStreamUrl,
+        });
+      });
+
+      // Handle abort signal
+      this.currentController?.signal?.addEventListener(
+        "abort",
+        () => {
+          streamLogger.info("Aborting FFmpeg process for stream switch");
+          command.kill("SIGTERM");
         },
-        this.currentController.signal
+        { once: true }
       );
 
-      command.on("error", (err) => {
-        console.error("❌ FFmpeg error:", err);
-        this.isStreaming = false;
-      });
-
-      command.on("stderr", (data) => {
-        // Log FFmpeg output for debugging (optional)
-        console.log("FFmpeg:", data.toString());
-      });
-
       this.isStreaming = true;
+      this.updatePresence();
 
-      const successMsg = `✅ Started streaming: \`${url}\`\n🎬 Resolution: ${this.config.streamOpts.width}x${this.config.streamOpts.height} @ ${this.config.streamOpts.fps}fps\n📊 Bitrate: ${this.config.streamOpts.bitrateKbps}kbps`;
-
+      const successMsg = `✅ Started streaming: \`${url}\` (${this.config.streamOpts.width}x${this.config.streamOpts.height}@${this.config.streamOpts.fps}fps, ${this.config.streamOpts.bitrateKbps}kbps)`;
       await statusMsg?.edit(successMsg);
 
-      // Start streaming
-      await playStream(output, this.streamer, undefined, this.currentController.signal);
+      logStreamStatus("starting", { url });
 
-      console.log("✅ Stream ended successfully");
+      // Start FFmpeg with error handling
+      try {
+        streamLogger.info("Starting FFmpeg command", {
+          url: this.currentStreamUrl,
+          resolution: `${this.config.streamOpts.width}x${this.config.streamOpts.height}`,
+          fps: this.config.streamOpts.fps,
+          bitrate: this.config.streamOpts.bitrateKbps,
+          codec: "libx264",
+        });
+        command.run();
+      } catch (ffmpegError: any) {
+        streamLogger.error("Failed to start FFmpeg", {
+          error: ffmpegError.message,
+          url: this.currentStreamUrl,
+        });
+        this.isStreaming = false;
+        delete this.currentStreamUrl;
+        throw ffmpegError;
+      }
+
+      // Start streaming with the FFmpeg output
+      try {
+        await playStream(
+          output,
+          this.streamer,
+          {
+            type: "go-live",
+            readrateInitialBurst: 10, // For low latency
+          },
+          this.currentController.signal
+        );
+      } catch (playStreamError: any) {
+        // Handle playStream errors gracefully
+        if (playStreamError.name !== "AbortError") {
+          throw playStreamError;
+        }
+        streamLogger.info("PlayStream was aborted during stream switch");
+        this.isStreaming = false;
+        delete this.currentStreamUrl;
+        return;
+      }
+
+      logStreamStatus("stopped", { url: this.currentStreamUrl });
       this.isStreaming = false;
+      delete this.currentStreamUrl;
     } catch (error: any) {
-      console.error("❌ Stream error:", error);
+      streamLogger.error("Stream command failed", {
+        error: error.message,
+        stack: error.stack,
+        url: this.currentStreamUrl,
+        stage: "main_catch",
+      });
+
+      logStreamStatus("error", {
+        error: error.message,
+        stack: error.stack,
+        url: this.currentStreamUrl,
+      });
       this.isStreaming = false;
+      delete this.currentStreamUrl;
+      this.updatePresence();
 
       if (error.name === "AbortError") {
-        console.log("🛑 Stream was stopped");
+        streamLogger.info("Stream was manually stopped or switched", {
+          url: this.currentStreamUrl,
+        });
         return;
       }
 
       const errorMsg = `❌ Failed to start stream: ${error.message}`;
-      await statusMsg?.edit(errorMsg);
+      try {
+        await statusMsg?.edit(errorMsg);
+      } catch (editError) {
+        streamLogger.warn("Could not edit status message", {
+          error: editError,
+        });
+      }
     }
   }
 
@@ -196,69 +477,121 @@ class DiscordStreamBot {
       return;
     }
 
-    this.currentController?.abort();
+    if (this.currentController) {
+      this.currentController.abort();
+      delete this.currentController;
+    }
     this.isStreaming = false;
+    this.updatePresence();
 
     await message.reply("🛑 Stream stopped successfully.");
-    console.log("🛑 Stream stopped by user command");
+    streamLogger.info("Stream stopped by user command", {
+      userId: message.author.id,
+      userTag: message.author.tag,
+      url: this.currentStreamUrl,
+    });
+    delete this.currentStreamUrl;
   }
 
   private async handleDisconnectCommand(message: any): Promise<void> {
-    this.currentController?.abort();
+    if (this.currentController) {
+      this.currentController.abort();
+      delete this.currentController;
+    }
     this.isStreaming = false;
     this.streamer.leaveVoice();
+    this.updatePresence();
 
     await message.reply("👋 Disconnected from voice channel and stopped streaming.");
-    console.log("👋 Disconnected from voice channel");
+    botLogger.info("Disconnected from voice channel", {
+      userId: message.author.id,
+      userTag: message.author.tag,
+      url: this.currentStreamUrl,
+    });
+    delete this.currentStreamUrl;
   }
 
   private async handleStatusCommand(message: any): Promise<void> {
+    botLogger.info("Status command requested", {
+      userId: message.author.id,
+      userTag: message.author.tag,
+    });
+
     const voiceConnection = this.streamer.voiceConnection;
     const isConnected = !!voiceConnection;
+    const uptime = process.uptime();
+    const hours = Math.floor(uptime / 3600);
+    const minutes = Math.floor((uptime % 3600) / 60);
+    const seconds = Math.floor(uptime % 60);
 
-    let statusMessage = "📊 **Bot Status**\n";
-    statusMessage += `🤖 Client: ${this.client.user?.tag}\n`;
-    statusMessage += `🔊 Voice Connected: ${isConnected ? "✅ Yes" : "❌ No"}\n`;
-    statusMessage += `📺 Streaming: ${this.isStreaming ? "✅ Active" : "❌ Inactive"}\n`;
+    let statusMessage = "📊 **Discord Stream Bot Status**\n";
+    statusMessage += "```\n";
+    statusMessage += `Bot User:     ${this.client.user?.tag}\n`;
+    statusMessage += `Uptime:       ${hours}h ${minutes}m ${seconds}s\n`;
+    statusMessage += `Voice:        ${isConnected ? "✅ Connected" : "❌ Disconnected"}\n`;
+    statusMessage += `Streaming:    ${this.isStreaming ? "🔴 LIVE" : "⭕ Idle"}\n`;
 
     if (isConnected && voiceConnection) {
-      statusMessage += `📍 Channel: <#${voiceConnection.channelId}>\n`;
+      statusMessage += `Channel:      #${voiceConnection.channelId}\n`;
     }
 
-    statusMessage += `\n⚙️ **Stream Settings**\n`;
-    statusMessage += `📏 Resolution: ${this.config.streamOpts.width}x${this.config.streamOpts.height}\n`;
-    statusMessage += `🎬 FPS: ${this.config.streamOpts.fps}\n`;
-    statusMessage += `📊 Bitrate: ${this.config.streamOpts.bitrateKbps}kbps (max: ${this.config.streamOpts.maxBitrateKbps}kbps)\n`;
-    statusMessage += `🎥 Codec: ${this.config.streamOpts.videoCodec}\n`;
-    statusMessage += `⚡ Hardware Acceleration: ${this.config.streamOpts.hardwareAcceleration ? "✅ Enabled" : "❌ Disabled"}`;
+    if (this.isStreaming && this.currentStreamUrl) {
+      statusMessage += `Stream URL:   ${this.currentStreamUrl.substring(0, 50)}${this.currentStreamUrl.length > 50 ? "..." : ""}\n`;
+    }
+
+    statusMessage += "```\n";
+    statusMessage += "**📺 Stream Configuration**\n";
+    statusMessage += "```yaml\n";
+    statusMessage += `Resolution:   ${this.config.streamOpts.width}x${this.config.streamOpts.height}\n`;
+    statusMessage += `Framerate:    ${this.config.streamOpts.fps} FPS\n`;
+    statusMessage += `Bitrate:      ${this.config.streamOpts.bitrateKbps} kbps\n`;
+    statusMessage += `Max Bitrate:  ${this.config.streamOpts.maxBitrateKbps} kbps\n`;
+    statusMessage += `Codec:        ${this.config.streamOpts.videoCodec}\n`;
+    statusMessage += `HW Accel:     ${this.config.streamOpts.hardwareAcceleration ? "Enabled" : "Disabled"}\n`;
+    statusMessage += "```\n";
+
+    statusMessage += `**🎮 Quick Commands**\n`;
+    statusMessage += `• \`${this.commandPrefix}stream <url>\` - Start streaming\n`;
+    statusMessage += `• \`${this.commandPrefix}stop\` - Stop current stream\n`;
+    statusMessage += `• \`${this.commandPrefix}help\` - View all commands`;
 
     await message.reply(statusMessage);
   }
 
   private async handleHelpCommand(message: any): Promise<void> {
-    const helpMessage =
-      `🎬 **Discord Video Stream Bot Help**\n\n` +
-      `**Available Commands:**\n` +
-      `\`${this.commandPrefix}stream <url>\` - Start streaming from URL\n` +
-      `\`${this.commandPrefix}stop\` - Stop the current stream\n` +
-      `\`${this.commandPrefix}disconnect\` - Disconnect from voice channel\n` +
-      `\`${this.commandPrefix}status\` - Show bot and stream status\n` +
-      `\`${this.commandPrefix}help\` - Show this help message\n\n` +
-      `**Supported URLs:**\n` +
-      `• Direct video files (MP4, MKV, AVI, etc.)\n` +
-      `• Livestreams (HLS, DASH, RTMP)\n` +
-      `• Various streaming platforms\n\n` +
-      `**Current Settings:**\n` +
-      `📏 Resolution: ${this.config.streamOpts.width}x${this.config.streamOpts.height}\n` +
-      `🎬 FPS: ${this.config.streamOpts.fps}\n` +
-      `📊 Bitrate: ${this.config.streamOpts.bitrateKbps}kbps`;
+    botLogger.info("Help command requested", {
+      userId: message.author.id,
+      userTag: message.author.tag,
+    });
+
+    const helpMessage = [
+      "🎬 **Discord Video Stream Bot**",
+      "*Streaming bot for Discord*\n",
+      "**📝 Commands**",
+      `• \`${this.commandPrefix}stream <url>\` - Start streaming`,
+      `• \`${this.commandPrefix}stream --channel-id <id> <url>\` - Stream to specific channel`,
+      `• \`${this.commandPrefix}stop\` - Stop current stream`,
+      `• \`${this.commandPrefix}disconnect\` - Leave voice channel`,
+      `• \`${this.commandPrefix}status\` - Show detailed status`,
+      `• \`${this.commandPrefix}help\` - Show this help\n`,
+      "**🔗 Supported Sources**",
+      "• Direct video files (MP4, MKV, etc)",
+      "• HTTP/HTTPS streams",
+      "• HLS/DASH streams",
+      "• RTMP streams\n",
+      `*Stream Bot v1.0.0 | ${this.config.streamOpts.videoCodec} codec*`,
+    ].join("\n");
 
     await message.reply(helpMessage);
   }
 
   private cleanup(): void {
-    this.currentController?.abort();
+    if (this.currentController) {
+      this.currentController.abort();
+      delete this.currentController;
+    }
     this.isStreaming = false;
+    delete this.currentStreamUrl;
     if (this.streamer.voiceConnection) {
       this.streamer.leaveVoice();
     }
@@ -267,10 +600,12 @@ class DiscordStreamBot {
 
   public async start(): Promise<void> {
     try {
-      console.log("🚀 Starting Discord Stream Bot...");
+      botLogger.info("Starting Discord Stream Bot...");
       await this.client.login(this.config.token);
     } catch (error) {
-      console.error("❌ Failed to start bot:", error);
+      botLogger.error("Failed to start bot", {
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
   }
@@ -279,15 +614,31 @@ class DiscordStreamBot {
 // Main execution
 async function main(): Promise<void> {
   try {
-    console.log("📋 Loading configuration...");
+    botLogger.info("Discord Stream Bot starting up...", {
+      nodeVersion: process.version,
+      platform: process.platform,
+      architecture: process.arch,
+    });
+
+    botLogger.info("Loading configuration...");
     const config = await loadConfig();
 
-    console.log("🤖 Initializing bot...");
+    botLogger.info("Configuration loaded successfully", {
+      webhooksEnabled: config.allowWebhooks,
+      streamResolution: `${config.streamOpts.width}x${config.streamOpts.height}`,
+      streamFps: config.streamOpts.fps,
+      streamBitrate: `${config.streamOpts.bitrateKbps}kbps`,
+    });
+
+    botLogger.info("Initializing bot...");
     const bot = new DiscordStreamBot(config);
 
     await bot.start();
   } catch (error) {
-    console.error("💥 Fatal error:", error);
+    botLogger.error("Fatal error during startup", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     process.exit(1);
   }
 }
