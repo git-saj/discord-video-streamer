@@ -1,6 +1,10 @@
 # Discord Video Stream Bot 🎥
 
-A high-performance Discord bot for streaming videos from URLs using slash commands. Built with TypeScript and
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
+[![Code Quality](https://img.shields.io/badge/code%20quality-biome-60a5fa)](https://biomejs.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A high-performance Discord bot for streaming videos from URLs using slash commands. Built with TypeScript and 
 optimized for 1080p 30fps streaming.
 
 ## Features ✨
