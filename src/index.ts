@@ -21,7 +21,7 @@ class DiscordStreamBot {
     this.client.on("ready", () => {
       console.log(`🚀 Bot is ready! Logged in as ${this.client.user?.tag}`);
       console.log(`📺 Configured for guild: ${this.config.guildId}`);
-      console.log(`🔊 Target channel: ${this.config.channelId}`);
+      console.log(`🔊 Will join the user's current voice channel automatically`);
       console.log(`🎮 Command prefix: ${this.commandPrefix}`);
       console.log("");
       console.log("Available commands:");
@@ -118,16 +118,26 @@ class DiscordStreamBot {
       return;
     }
 
+    // Check if user is in a voice channel
+    const voiceChannel = message.author.voice?.channel;
+    if (!voiceChannel) {
+      await message.reply(
+        "❌ You need to be in a voice channel first! Please join a voice channel and try again."
+      );
+      return;
+    }
+
     const statusMsg = await message.reply("🔄 Preparing to stream...");
 
     try {
-      // Join voice channel
-      console.log(`🔊 Joining voice channel ${this.config.guildId}/${this.config.channelId}`);
-      await this.streamer.joinVoice(this.config.guildId, this.config.channelId);
+      // Join the user's voice channel
+      console.log(
+        `🔊 Joining voice channel ${message.guildId}/${voiceChannel.id} (${voiceChannel.name})`
+      );
+      await this.streamer.joinVoice(message.guildId!, voiceChannel.id);
 
       // Handle stage channels
-      const channel = await this.client.channels.fetch(this.config.channelId);
-      if (channel instanceof StageChannel) {
+      if (voiceChannel instanceof StageChannel) {
         await this.client.user?.voice?.setSuppressed(false);
       }
 

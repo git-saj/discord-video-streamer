@@ -1,1 +1,1 @@
-{ "token": "test", "guildId": "123", "channelId": "456", "allowedUserIds": ["789"] }
+{ "token": "test", "guildId": "123", "allowedUserIds": ["789"] }

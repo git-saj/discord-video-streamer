@@ -86,7 +86,6 @@ Create a `config.json` file based on `config.example.json`:
 {
   "token": "YOUR_DISCORD_BOT_TOKEN_HERE",
   "guildId": "YOUR_GUILD_ID_HERE",
-  "channelId": "YOUR_VOICE_CHANNEL_ID_HERE",
   "allowedUserIds": [
     "YOUR_USER_ID_HERE",
     "ANOTHER_ALLOWED_USER_ID"
@@ -103,13 +102,14 @@ Create a `config.json` file based on `config.example.json`:
 }
 ```
 
+**Note:** The bot will automatically join whatever voice channel you're currently in when you use the `!stream` command.
+
 ### Configuration Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `token` | Discord bot token | Required |
 | `guildId` | Discord server (guild) ID | Required |
-| `channelId` | Voice channel ID where bot will stream | Required |
 | `allowedUserIds` | Array of user IDs allowed to use the bot | Required |
 | `streamOpts.width` | Stream width in pixels | 1920 |
 | `streamOpts.height` | Stream height in pixels | 1080 |
@@ -154,7 +154,7 @@ Once the bot is running and connected to Discord, you can use these message comm
 
 ### Available Commands
 
-- `!stream <url>` - Start streaming from URL
+- `!stream <url>` - Start streaming from URL (joins your current voice channel)
 - `!stop` - Stop the current stream
 - `!disconnect` - Disconnect from voice channel
 - `!status` - Check bot status
@@ -163,8 +163,15 @@ Once the bot is running and connected to Discord, you can use these message comm
 **Example:**
 
 ```bash
+# First, join a voice channel, then:
 !stream https://example.com/video.mp4
 ```
+
+**How it works:**
+
+1. Join any voice channel in your Discord server
+2. Use `!stream <url>` - the bot will automatically join your channel
+3. The bot starts streaming the video to that channel
 
 **Supported URL types:**
 
@@ -180,15 +187,12 @@ Once the bot is running and connected to Discord, you can use these message comm
 2. Right-click on your server name
 3. Select "Copy ID"
 
-### Get Channel ID
-
-1. Right-click on the voice channel
-2. Select "Copy ID"
-
 ### Get User ID
 
 1. Right-click on your username
 2. Select "Copy ID"
+
+**Note:** You no longer need to get channel IDs - the bot automatically joins whatever voice channel you're in!
 
 ## Performance Tuning 🔧
 
@@ -226,8 +230,9 @@ Once the bot is running and connected to Discord, you can use these message comm
 
 4. **Bot not responding to commands**
    - Make sure commands start with `!` prefix
-   - Ensure bot is in the correct guild/channel
+   - Ensure bot is in the correct guild
    - Check user permissions in allowedUserIds
+   - Make sure you're in a voice channel when using `!stream`
    - Try using `!help` to test basic functionality
 
 ### Debug Mode
@@ -335,13 +340,16 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ### **✅ Production-Ready Discord Video Stream Bot**
 
 **🎬 Core Features:**
+
 - **High-Performance Streaming**: 1080p @ 30fps with 2.5-4Mbps bitrate
+- **Dynamic Voice Channel Joining**: Automatically joins your current voice channel
 - **Message Commands**: Simple `!command` interface (no slash commands - they don't work with selfbots)
 - **Node.js 24**: Latest LTS with optimal performance and security
 - **TypeScript**: Full type safety and modern development experience
 - **Docker Ready**: Multi-stage build with Alpine Linux for minimal size
 
 **🛡️ Enterprise-Grade Quality:**
+
 - **Pre-commit Hooks**: Automatic code formatting, linting, and security scanning
 - **CI/CD Pipeline**: Comprehensive testing, security audits, and quality checks  
 - **Secret Detection**: Prevents credential leaks with baseline scanning
@@ -349,14 +357,17 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - **Dependency Security**: Automated vulnerability scanning and updates
 
 **⚡ Developer Experience:**
+
 - **Nix Shell**: Complete development environment with zero setup
 - **Conventional Commits**: Standardized git workflow with commitizen
 - **Pre-commit Quality**: Automatic formatting, linting, and type checking
 - **Comprehensive Documentation**: Setup guides, troubleshooting, and examples
 
-### **🚀 Quick Commands:**
+### 🚀 Quick Commands
+
 ```bash
-!stream <url>     # Stream video from URL
+# Join a voice channel first, then:
+!stream <url>     # Stream video from URL (bot joins your channel)
 !stop            # Stop current stream  
 !disconnect      # Leave voice channel
 !status          # Show bot status

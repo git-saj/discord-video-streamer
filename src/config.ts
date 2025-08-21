@@ -14,7 +14,6 @@ export interface StreamConfig {
 export interface BotConfig {
   token: string;
   guildId: string;
-  channelId: string;
   allowedUserIds: string[];
   streamOpts: StreamConfig;
 }
@@ -22,7 +21,6 @@ export interface BotConfig {
 const DEFAULT_CONFIG: BotConfig = {
   token: "",
   guildId: "",
-  channelId: "",
   allowedUserIds: [],
   streamOpts: {
     width: 1920,
@@ -61,10 +59,6 @@ export async function loadConfig(configPath: string = "./config.json"): Promise<
 
     if (!config.guildId) {
       throw new Error("Guild ID is required in config");
-    }
-
-    if (!config.channelId) {
-      throw new Error("Channel ID is required in config");
     }
 
     if (!config.allowedUserIds || config.allowedUserIds.length === 0) {
