@@ -25,7 +25,6 @@ optimized for 1080p 30fps streaming.
 - Node.js 24 or higher
 - FFmpeg
 - Discord Bot Token (using discord.js-selfbot-v13@3.7.0)
-- Guild and Channel IDs where the bot will operate
 
 ## Development Setup 🚀
 
@@ -85,11 +84,6 @@ Create a `config.json` file based on `config.example.json`:
 ```json
 {
   "token": "YOUR_DISCORD_BOT_TOKEN_HERE",
-  "guildId": "YOUR_GUILD_ID_HERE",
-  "allowedUserIds": [
-    "YOUR_USER_ID_HERE",
-    "ANOTHER_ALLOWED_USER_ID"
-  ],
   "streamOpts": {
     "width": 1920,
     "height": 1080,
@@ -103,14 +97,13 @@ Create a `config.json` file based on `config.example.json`:
 ```
 
 **Note:** The bot will automatically join whatever voice channel you're currently in when you use the `!stream` command.
+No guild ID or user restrictions needed in config!
 
 ### Configuration Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `token` | Discord bot token | Required |
-| `guildId` | Discord server (guild) ID | Required |
-| `allowedUserIds` | Array of user IDs allowed to use the bot | Required |
 | `streamOpts.width` | Stream width in pixels | 1920 |
 | `streamOpts.height` | Stream height in pixels | 1080 |
 | `streamOpts.fps` | Frames per second | 30 |
@@ -179,20 +172,41 @@ Once the bot is running and connected to Discord, you can use these message comm
 - Livestreams (HLS, DASH, RTMP)
 - Various streaming platforms (depends on FFmpeg support)
 
-## Getting Discord IDs 🆔
+## Getting Your Discord Token 🔑
 
-### Get Guild (Server) ID
+### Get Your Discord Token
 
-1. Enable Developer Mode in Discord Settings > Advanced
-2. Right-click on your server name
-3. Select "Copy ID"
+1. Open Discord in your web browser (not the app)
+2. Press `Ctrl + Shift + I` (or `F12`) to open Developer Tools
+3. Go to the Console tab
+4. Paste this code and press Enter:
 
-### Get User ID
+```javascript
+window.webpackChunkdiscord_app.push([
+  [Math.random()],
+  {},
+  req => {
+    if (!req.c) return;
+    for (const m of Object.keys(req.c)
+      .map(x => req.c[x].exports)
+      .filter(x => x)) {
+      if (m.default && m.default.getToken !== undefined) {
+        return copy(m.default.getToken());
+      }
+      if (m.getToken !== undefined) {
+        return copy(m.getToken());
+      }
+    }
+  },
+]);
+window.webpackChunkdiscord_app.pop();
+console.log('%cWorked!', 'font-size: 50px');
+console.log('%cYou now have your token in the clipboard!', 'font-size: 16px');
+```
 
-1. Right-click on your username
-2. Select "Copy ID"
+1. Your token is now copied to clipboard!
 
-**Note:** You no longer need to get channel IDs - the bot automatically joins whatever voice channel you're in!
+**⚠️ Important:** Keep your token private and never share it publicly!
 
 ## Performance Tuning 🔧
 
@@ -230,10 +244,9 @@ Once the bot is running and connected to Discord, you can use these message comm
 
 4. **Bot not responding to commands**
    - Make sure commands start with `!` prefix
-   - Ensure bot is in the correct guild
-   - Check user permissions in allowedUserIds
    - Make sure you're in a voice channel when using `!stream`
    - Try using `!help` to test basic functionality
+   - Check that your Discord token is valid
 
 ### Debug Mode
 
@@ -341,8 +354,10 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 **🎬 Core Features:**
 
+- **Zero Configuration**: Only requires Discord token - no IDs or user lists needed!
 - **High-Performance Streaming**: 1080p @ 30fps with 2.5-4Mbps bitrate
 - **Dynamic Voice Channel Joining**: Automatically joins your current voice channel
+- **Universal Access**: Works anywhere you have the bot running
 - **Message Commands**: Simple `!command` interface (no slash commands - they don't work with selfbots)
 - **Node.js 24**: Latest LTS with optimal performance and security
 - **TypeScript**: Full type safety and modern development experience

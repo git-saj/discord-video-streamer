@@ -13,15 +13,11 @@ export interface StreamConfig {
 
 export interface BotConfig {
   token: string;
-  guildId: string;
-  allowedUserIds: string[];
   streamOpts: StreamConfig;
 }
 
 const DEFAULT_CONFIG: BotConfig = {
   token: "",
-  guildId: "",
-  allowedUserIds: [],
   streamOpts: {
     width: 1920,
     height: 1080,
@@ -55,14 +51,6 @@ export async function loadConfig(configPath: string = "./config.json"): Promise<
     // Validate required fields
     if (!config.token) {
       throw new Error("Token is required in config");
-    }
-
-    if (!config.guildId) {
-      throw new Error("Guild ID is required in config");
-    }
-
-    if (!config.allowedUserIds || config.allowedUserIds.length === 0) {
-      throw new Error("At least one allowed user ID is required in config");
     }
 
     return config;

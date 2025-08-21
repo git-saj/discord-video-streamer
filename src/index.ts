@@ -20,7 +20,6 @@ class DiscordStreamBot {
   private setupEventHandlers(): void {
     this.client.on("ready", () => {
       console.log(`🚀 Bot is ready! Logged in as ${this.client.user?.tag}`);
-      console.log(`📺 Configured for guild: ${this.config.guildId}`);
       console.log(`🔊 Will join the user's current voice channel automatically`);
       console.log(`🎮 Command prefix: ${this.commandPrefix}`);
       console.log("");
@@ -34,11 +33,6 @@ class DiscordStreamBot {
 
     this.client.on("messageCreate", async (message) => {
       if (message.author.bot) return;
-
-      // Check if user is authorized
-      if (!this.config.allowedUserIds.includes(message.author.id)) {
-        return;
-      }
 
       // Check if message starts with command prefix
       if (!message.content.startsWith(this.commandPrefix)) {
