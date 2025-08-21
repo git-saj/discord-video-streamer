@@ -330,12 +330,46 @@ git cz  # Use commitizen for guided commit messages
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
+## 🎉 **Bot Summary**
+
+### **✅ Production-Ready Discord Video Stream Bot**
+
+**🎬 Core Features:**
+- **High-Performance Streaming**: 1080p @ 30fps with 2.5-4Mbps bitrate
+- **Message Commands**: Simple `!command` interface (no slash commands - they don't work with selfbots)
+- **Node.js 24**: Latest LTS with optimal performance and security
+- **TypeScript**: Full type safety and modern development experience
+- **Docker Ready**: Multi-stage build with Alpine Linux for minimal size
+
+**🛡️ Enterprise-Grade Quality:**
+- **Pre-commit Hooks**: Automatic code formatting, linting, and security scanning
+- **CI/CD Pipeline**: Comprehensive testing, security audits, and quality checks  
+- **Secret Detection**: Prevents credential leaks with baseline scanning
+- **Docker Security**: Best practices with non-root user and health checks
+- **Dependency Security**: Automated vulnerability scanning and updates
+
+**⚡ Developer Experience:**
+- **Nix Shell**: Complete development environment with zero setup
+- **Conventional Commits**: Standardized git workflow with commitizen
+- **Pre-commit Quality**: Automatic formatting, linting, and type checking
+- **Comprehensive Documentation**: Setup guides, troubleshooting, and examples
+
+### **🚀 Quick Commands:**
+```bash
+!stream <url>     # Stream video from URL
+!stop            # Stop current stream  
+!disconnect      # Leave voice channel
+!status          # Show bot status
+!help            # Show all commands
+```
+
 ## Acknowledgments 🙏
 
 - Built with [@dank074/discord-video-stream](https://github.com/dank074/Discord-video-stream) v5.0.2
 - Uses [discord.js-selfbot-v13](https://github.com/aiko-chan-ai/discord.js-selfbot-v13) v3.7.0
 - Powered by FFmpeg for video processing
-- Modern tooling with Biome v2.2.0 and TypeScript v5.9.2
+- Modern tooling with Biome v2.2.0, TypeScript v5.9.2, and Node.js 24 LTS
+- Enterprise-grade quality with pre-commit hooks and comprehensive CI/CD
 
 ## Support 💬
 
