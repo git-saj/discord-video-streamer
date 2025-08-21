@@ -24,6 +24,7 @@ repos:
     rev: v1.5.0
     hooks:
       - id: detect-secrets
+        additional_dependencies: [gibberish-detector]
         args: [--baseline, .secrets.baseline]
         exclude: |
           (?x)^(
