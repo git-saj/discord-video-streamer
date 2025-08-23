@@ -11,6 +11,171 @@ import {
   logStreamStatus,
 } from "./logger.js";
 
+class StreamSwitcher {
+  private mainOutput: PassThrough;
+  private currentCommand: any = null;
+  private currentController: AbortController | null = null;
+  private config: BotConfig;
+
+  constructor(config: BotConfig) {
+    this.mainOutput = new PassThrough();
+    this.config = config;
+  }
+
+  getOutputStream(): PassThrough {
+    return this.mainOutput;
+  }
+
+  async switchTo(url: string, abortSignal?: AbortSignal): Promise<void> {
+    streamLogger.info("Switching stream source", {
+      newUrl: url,
+      hasCurrentStream: !!this.currentCommand,
+    });
+
+    // Create new FFmpeg command
+    const newOutput = new PassThrough();
+    const command = ffmpeg(url);
+
+    // Basic input options
+    command.inputOptions([
+      "-re",
+      "-analyzeduration",
+      "10000000",
+      "-probesize",
+      "10000000",
+    ]);
+
+    // Simple output configuration
+    command
+      .outputFormat("matroska")
+      .videoCodec("libx264")
+      .size(`${this.config.streamOpts.width}x${this.config.streamOpts.height}`)
+      .fps(this.config.streamOpts.fps)
+      .videoBitrate(`${this.config.streamOpts.bitrateKbps}k`)
+      .audioCodec("libopus")
+      .audioChannels(2)
+      .audioFrequency(48000)
+      .audioBitrate("128k");
+
+    // Add essential output options
+    command.outputOptions([
+      "-preset",
+      "veryfast",
+      "-tune",
+      "zerolatency",
+      "-pix_fmt",
+      "yuv420p",
+      "-profile:v",
+      "baseline",
+      "-level",
+      "3.1",
+      "-g",
+      String(this.config.streamOpts.fps * 2),
+      "-map",
+      "0:v:0",
+      "-map",
+      "0:a:0?",
+    ]);
+
+    command.output(newOutput);
+
+    command.on("stderr", (line) => logFFmpegOutput(line));
+
+    // Handle FFmpeg errors
+    command.on("error", (error) => {
+      if (
+        !error.message.includes("signal 15") &&
+        !error.message.includes("code 255")
+      ) {
+        streamLogger.error("FFmpeg process error during switch", {
+          error: error.message,
+          url: url,
+        });
+      }
+    });
+
+    command.on("end", () => {
+      streamLogger.info("FFmpeg process ended during switch", { url });
+    });
+
+    // Handle external abort signal
+    abortSignal?.addEventListener(
+      "abort",
+      () => {
+        streamLogger.info("Aborting FFmpeg process during switch");
+        command.kill("SIGTERM");
+      },
+      { once: true },
+    );
+
+    // Start new FFmpeg process
+    try {
+      command.run();
+      streamLogger.info("New FFmpeg command started", { url });
+    } catch (error: any) {
+      streamLogger.error("Failed to start new FFmpeg command", {
+        error: error.message,
+        url,
+      });
+      throw error;
+    }
+
+    // Wait a moment for the new stream to stabilize
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Clean up old command first to avoid conflicts
+    const oldCommand = this.currentCommand;
+    if (oldCommand) {
+      streamLogger.info("Cleaning up old FFmpeg process");
+      try {
+        oldCommand.kill("SIGTERM");
+      } catch (error: any) {
+        streamLogger.warn("Error killing old FFmpeg process", {
+          error: error.message,
+        });
+      }
+    }
+
+    // Update current command reference
+    this.currentCommand = command;
+
+    // Set up data forwarding from new stream to main output
+    newOutput.on("data", (chunk) => {
+      if (!this.mainOutput.destroyed) {
+        this.mainOutput.write(chunk);
+      }
+    });
+
+    newOutput.on("end", () => {
+      streamLogger.info("New stream output ended", { url });
+    });
+
+    newOutput.on("error", (error) => {
+      streamLogger.error("New stream output error", {
+        error: error.message,
+        url,
+      });
+    });
+
+    streamLogger.info("Stream switch completed successfully", { url });
+  }
+
+  stop(): void {
+    if (this.currentCommand) {
+      streamLogger.info("Stopping StreamSwitcher");
+      this.currentCommand.kill("SIGTERM");
+      this.currentCommand = null;
+    }
+  }
+
+  cleanup(): void {
+    this.stop();
+    if (this.mainOutput && !this.mainOutput.destroyed) {
+      this.mainOutput.destroy();
+    }
+  }
+}
+
 class DiscordStreamBot {
   private client: Client;
   private streamer: Streamer;
@@ -18,6 +183,7 @@ class DiscordStreamBot {
   private currentController?: AbortController;
   private isStreaming = false;
   private currentStreamUrl?: string;
+  private streamSwitcher?: StreamSwitcher | null;
   private readonly commandPrefix = "!";
 
   constructor(config: BotConfig) {
@@ -70,7 +236,11 @@ class DiscordStreamBot {
 
     this.client.on("messageCreate", async (message) => {
       // Filter out bots and optionally webhooks based on config
-      if (message.author.bot && (!this.config.allowWebhooks || !message.webhookId)) return;
+      if (
+        message.author.bot &&
+        (!this.config.allowWebhooks || !message.webhookId)
+      )
+        return;
 
       // Log webhook messages for debugging
       if (message.webhookId) {
@@ -116,7 +286,10 @@ class DiscordStreamBot {
   }
 
   private async handleCommand(message: any): Promise<void> {
-    const args = message.content.slice(this.commandPrefix.length).trim().split(/ +/);
+    const args = message.content
+      .slice(this.commandPrefix.length)
+      .trim()
+      .split(/ +/);
     const command = args.shift()?.toLowerCase();
 
     // Log all received commands
@@ -157,7 +330,7 @@ class DiscordStreamBot {
             userTag: message.author.tag,
           });
           await message.reply(
-            `❌ Unknown command. Use \`${this.commandPrefix}help\` for available commands.`
+            `❌ Unknown command. Use \`${this.commandPrefix}help\` for available commands.`,
           );
       }
 
@@ -180,10 +353,13 @@ class DiscordStreamBot {
     }
   }
 
-  private async handleStreamCommand(message: any, args: string[]): Promise<void> {
+  private async handleStreamCommand(
+    message: any,
+    args: string[],
+  ): Promise<void> {
     if (args.length === 0) {
       await message.reply(
-        `❌ Please provide a URL. Usage: \`${this.commandPrefix}stream [--channel-id <channel_id>] <url>\``
+        `❌ Please provide a URL. Usage: \`${this.commandPrefix}stream [--channel-id <channel_id>] <url>\``,
       );
       return;
     }
@@ -207,7 +383,9 @@ class DiscordStreamBot {
         userId: message.author.id,
         userTag: message.author.tag,
       });
-      await message.reply("❌ Invalid URL. Please provide a valid HTTP, HTTPS, or RTMP URL.");
+      await message.reply(
+        "❌ Invalid URL. Please provide a valid HTTP, HTTPS, or RTMP URL.",
+      );
       return;
     }
 
@@ -222,23 +400,48 @@ class DiscordStreamBot {
       currentStream: this.currentStreamUrl,
     });
 
-    if (this.isStreaming) {
-      streamLogger.info("Switching to new stream", {
+    if (this.isStreaming && this.streamSwitcher) {
+      streamLogger.info("Switching to new stream seamlessly", {
         oldStream: this.currentStreamUrl,
         newStream: url,
       });
       await message.reply("🔄 Switching to new stream...");
 
-      // Stop current stream and wait for cleanup
-      if (this.currentController) {
-        this.currentController.abort();
-        delete this.currentController;
-      }
-      this.isStreaming = false;
-      delete this.currentStreamUrl;
+      try {
+        // Switch stream source without stopping Discord stream
+        await this.streamSwitcher.switchTo(url, this.currentController?.signal);
+        this.currentStreamUrl = url;
 
-      // Give time for the stream to properly close
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+        const successMsg = `✅ Switched to: \`${url}\` (${this.config.streamOpts.width}x${this.config.streamOpts.height}@${this.config.streamOpts.fps}fps, ${this.config.streamOpts.bitrateKbps}kbps)`;
+        await message.reply(successMsg);
+
+        streamLogger.info("Stream switch completed", {
+          newStream: url,
+        });
+        return;
+      } catch (error: any) {
+        streamLogger.error(
+          "Failed to switch stream seamlessly, falling back to restart",
+          {
+            error: error.message,
+            url,
+          },
+        );
+        await message.reply("⚠️ Seamless switch failed, restarting stream...");
+
+        // Fall back to full restart
+        if (this.currentController) {
+          this.currentController.abort();
+          delete this.currentController;
+        }
+        this.isStreaming = false;
+        this.streamSwitcher?.cleanup();
+        this.streamSwitcher = null;
+        delete this.currentStreamUrl;
+
+        // Give time for cleanup
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
     }
 
     // Determine target voice channel
@@ -248,9 +451,15 @@ class DiscordStreamBot {
       // Try to fetch the specified channel
       try {
         const targetChannel = await this.client.channels.fetch(channelId);
-        if (!targetChannel || !("joinable" in targetChannel) || !("speakable" in targetChannel)) {
+        if (
+          !targetChannel ||
+          !("joinable" in targetChannel) ||
+          !("speakable" in targetChannel)
+        ) {
           // Check if it's a voice-capable channel using duck typing
-          await message.reply(`❌ Channel ID \`${channelId}\` is not a valid voice channel.`);
+          await message.reply(
+            `❌ Channel ID \`${channelId}\` is not a valid voice channel.`,
+          );
           return;
         }
         voiceChannel = targetChannel;
@@ -261,7 +470,7 @@ class DiscordStreamBot {
         });
       } catch (_error) {
         await message.reply(
-          `❌ Could not find voice channel with ID \`${channelId}\`. Please check the channel ID.`
+          `❌ Could not find voice channel with ID \`${channelId}\`. Please check the channel ID.`,
         );
         return;
       }
@@ -270,7 +479,7 @@ class DiscordStreamBot {
       voiceChannel = message.author.voice?.channel;
       if (!voiceChannel) {
         await message.reply(
-          "❌ You need to be in a voice channel first! Please join a voice channel or use `--channel-id <channel_id>` to specify one."
+          "❌ You need to be in a voice channel first! Please join a voice channel or use `--channel-id <channel_id>` to specify one.",
         );
         return;
       }
@@ -281,7 +490,10 @@ class DiscordStreamBot {
     try {
       // Only join if not already in the target channel
       const currentConnection = this.streamer.voiceConnection;
-      if (!currentConnection || currentConnection.channelId !== voiceChannel.id) {
+      if (
+        !currentConnection ||
+        currentConnection.channelId !== voiceChannel.id
+      ) {
         botLogger.info("Joining voice channel", {
           guildId: message.guildId || voiceChannel.guildId,
           channelId: voiceChannel.id,
@@ -308,80 +520,11 @@ class DiscordStreamBot {
       this.currentStreamUrl = url;
       streamLogger.info("Preparing stream", { url });
 
-      // Create FFmpeg stream with simpler transcoding settings
-      const output = new PassThrough();
-      const command = ffmpeg(url);
+      // Create StreamSwitcher for seamless switching
+      this.streamSwitcher = new StreamSwitcher(this.config);
 
-      // Basic input options
-      command.inputOptions(["-re", "-analyzeduration", "10000000", "-probesize", "10000000"]);
-
-      // Simple output configuration
-      command
-        .outputFormat("matroska")
-        .videoCodec("libx264")
-        .size(`${this.config.streamOpts.width}x${this.config.streamOpts.height}`)
-        .fps(this.config.streamOpts.fps)
-        .videoBitrate(`${this.config.streamOpts.bitrateKbps}k`)
-        .audioCodec("libopus")
-        .audioChannels(2)
-        .audioFrequency(48000)
-        .audioBitrate("128k");
-
-      // Add essential output options
-      command.outputOptions([
-        "-preset",
-        "veryfast",
-        "-tune",
-        "zerolatency",
-        "-pix_fmt",
-        "yuv420p",
-        "-profile:v",
-        "baseline",
-        "-level",
-        "3.1",
-        "-g",
-        String(this.config.streamOpts.fps * 2),
-        "-map",
-        "0:v:0",
-        "-map",
-        "0:a:0?",
-      ]);
-
-      // Output to PassThrough stream
-      command.output(output);
-
-      command.on("stderr", (line) => logFFmpegOutput(line));
-
-      // Handle FFmpeg errors (but not SIGTERM which is normal shutdown)
-      command.on("error", (error) => {
-        if (!error.message.includes("signal 15") && !error.message.includes("code 255")) {
-          streamLogger.error("FFmpeg process error", {
-            error: error.message,
-            url: this.currentStreamUrl,
-          });
-        } else {
-          streamLogger.debug("FFmpeg terminated normally", {
-            error: error.message,
-            url: this.currentStreamUrl,
-          });
-        }
-      });
-
-      command.on("end", () => {
-        streamLogger.info("FFmpeg process ended", {
-          url: this.currentStreamUrl,
-        });
-      });
-
-      // Handle abort signal
-      this.currentController?.signal?.addEventListener(
-        "abort",
-        () => {
-          streamLogger.info("Aborting FFmpeg process for stream switch");
-          command.kill("SIGTERM");
-        },
-        { once: true }
-      );
+      // Start initial stream
+      await this.streamSwitcher.switchTo(url, this.currentController.signal);
 
       this.isStreaming = true;
       this.updatePresence();
@@ -391,36 +534,16 @@ class DiscordStreamBot {
 
       logStreamStatus("starting", { url });
 
-      // Start FFmpeg with error handling
-      try {
-        streamLogger.info("Starting FFmpeg command", {
-          url: this.currentStreamUrl,
-          resolution: `${this.config.streamOpts.width}x${this.config.streamOpts.height}`,
-          fps: this.config.streamOpts.fps,
-          bitrate: this.config.streamOpts.bitrateKbps,
-          codec: "libx264",
-        });
-        command.run();
-      } catch (ffmpegError: any) {
-        streamLogger.error("Failed to start FFmpeg", {
-          error: ffmpegError.message,
-          url: this.currentStreamUrl,
-        });
-        this.isStreaming = false;
-        delete this.currentStreamUrl;
-        throw ffmpegError;
-      }
-
-      // Start streaming with the FFmpeg output
+      // Start streaming with the StreamSwitcher output
       try {
         await playStream(
-          output,
+          this.streamSwitcher.getOutputStream(),
           this.streamer,
           {
             type: "go-live",
             readrateInitialBurst: 10, // For low latency
           },
-          this.currentController.signal
+          this.currentController.signal,
         );
       } catch (playStreamError: any) {
         // Handle playStream errors gracefully
@@ -481,6 +604,8 @@ class DiscordStreamBot {
       this.currentController.abort();
       delete this.currentController;
     }
+    this.streamSwitcher?.cleanup();
+    this.streamSwitcher = null;
     this.isStreaming = false;
     this.updatePresence();
 
@@ -498,11 +623,15 @@ class DiscordStreamBot {
       this.currentController.abort();
       delete this.currentController;
     }
+    this.streamSwitcher?.cleanup();
+    this.streamSwitcher = null;
     this.isStreaming = false;
     this.streamer.leaveVoice();
     this.updatePresence();
 
-    await message.reply("👋 Disconnected from voice channel and stopped streaming.");
+    await message.reply(
+      "👋 Disconnected from voice channel and stopped streaming.",
+    );
     botLogger.info("Disconnected from voice channel", {
       userId: message.author.id,
       userTag: message.author.tag,
@@ -551,7 +680,7 @@ class DiscordStreamBot {
     statusMessage += "```\n";
 
     statusMessage += `**🎮 Quick Commands**\n`;
-    statusMessage += `• \`${this.commandPrefix}stream <url>\` - Start streaming\n`;
+    statusMessage += `• \`${this.commandPrefix}stream <url>\` - Start streaming (seamless switching)\n`;
     statusMessage += `• \`${this.commandPrefix}stop\` - Stop current stream\n`;
     statusMessage += `• \`${this.commandPrefix}help\` - View all commands`;
 
@@ -568,7 +697,7 @@ class DiscordStreamBot {
       "🎬 **Discord Video Stream Bot**",
       "*Streaming bot for Discord*\n",
       "**📝 Commands**",
-      `• \`${this.commandPrefix}stream <url>\` - Start streaming`,
+      `• \`${this.commandPrefix}stream <url>\` - Start streaming (seamless switching if already streaming)`,
       `• \`${this.commandPrefix}stream --channel-id <id> <url>\` - Stream to specific channel`,
       `• \`${this.commandPrefix}stop\` - Stop current stream`,
       `• \`${this.commandPrefix}disconnect\` - Leave voice channel`,
@@ -579,6 +708,10 @@ class DiscordStreamBot {
       "• HTTP/HTTPS streams",
       "• HLS/DASH streams",
       "• RTMP streams\n",
+      "**✨ Features**",
+      "• Seamless stream switching without disconnecting",
+      "• Hardware acceleration support",
+      "• Real-time transcoding\n",
       `*Stream Bot v1.0.0 | ${this.config.streamOpts.videoCodec} codec*`,
     ].join("\n");
 
@@ -590,6 +723,8 @@ class DiscordStreamBot {
       this.currentController.abort();
       delete this.currentController;
     }
+    this.streamSwitcher?.cleanup();
+    this.streamSwitcher = null;
     this.isStreaming = false;
     delete this.currentStreamUrl;
     if (this.streamer.voiceConnection) {
