@@ -30,9 +30,7 @@ const DEFAULT_CONFIG: BotConfig = {
   commandPrefix: "!",
 };
 
-export async function loadConfig(
-  configPath: string = "./config.json",
-): Promise<BotConfig> {
+export async function loadConfig(configPath: string = "./config.json"): Promise<BotConfig> {
   if (!existsSync(configPath)) {
     throw new Error(`Config file not found at ${configPath}`);
   }
@@ -69,9 +67,7 @@ export function validateStreamUrl(url: string): boolean {
   try {
     const urlObj = new URL(url);
     return (
-      urlObj.protocol === "http:" ||
-      urlObj.protocol === "https:" ||
-      urlObj.protocol === "rtmp:"
+      urlObj.protocol === "http:" || urlObj.protocol === "https:" || urlObj.protocol === "rtmp:"
     );
   } catch {
     return false;

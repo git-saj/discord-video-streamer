@@ -1,11 +1,6 @@
 import { Client, StageChannel } from "discord.js-selfbot-v13";
 import { Streamer, playStream } from "@dank074/discord-video-stream";
-import {
-  loadConfig,
-  validateStreamUrl,
-  type BotConfig,
-  type StreamConfig,
-} from "./config.js";
+import { loadConfig, validateStreamUrl, type BotConfig, type StreamConfig } from "./config.js";
 import ffmpeg from "fluent-ffmpeg";
 import { PassThrough } from "node:stream";
 import {
@@ -85,8 +80,7 @@ async function detectNvidiaCapabilities(): Promise<NvidiaInfo> {
         timeout: 5000,
         stdio: ["ignore", "pipe", "ignore"],
       });
-      result.nvencSupported =
-        ffmpegOutput.includes("h264_nvenc") || ffmpegOutput.includes("nvenc");
+      result.nvencSupported = ffmpegOutput.includes("h264_nvenc") || ffmpegOutput.includes("nvenc");
     } catch {
       result.nvencSupported = false;
     }
@@ -191,7 +185,7 @@ async function analyzeInputStream(url: string): Promise<StreamAnalysis> {
 
 function generateOptimalSettings(
   analysis: StreamAnalysis,
-  hardwareAccel: boolean,
+  hardwareAccel: boolean
 ): {
   width: number;
   height: number;
@@ -291,13 +285,11 @@ async function logHardwareAcceleration(config: StreamConfig): Promise<void> {
 
     if (!nvidiaInfo.nvencSupported) {
       streamLogger.warn(
-        "NVENC encoder not detected in FFmpeg - will fall back to software encoding",
+        "NVENC encoder not detected in FFmpeg - will fall back to software encoding"
       );
     }
   } else {
-    streamLogger.warn(
-      "Hardware acceleration enabled but no NVIDIA GPU detected",
-    );
+    streamLogger.warn("Hardware acceleration enabled but no NVIDIA GPU detected");
   }
 }
 
@@ -330,22 +322,18 @@ class StreamSwitcher {
         const analysis = await analyzeInputStream(url);
         const optimalSettings = generateOptimalSettings(
           analysis,
-          this.config.streamOpts.hardwareAcceleration || false,
+          this.config.streamOpts.hardwareAcceleration || false
         );
 
         streamSettings = {
           ...optimalSettings,
-          hardwareAcceleration:
-            this.config.streamOpts.hardwareAcceleration || false,
+          hardwareAcceleration: this.config.streamOpts.hardwareAcceleration || false,
           videoCodec: this.config.streamOpts.videoCodec || "H264",
         };
       } catch (error) {
-        streamLogger.warn(
-          "Failed to analyze input stream, using fallback settings",
-          {
-            error: error instanceof Error ? error.message : String(error),
-          },
-        );
+        streamLogger.warn("Failed to analyze input stream, using fallback settings", {
+          error: error instanceof Error ? error.message : String(error),
+        });
 
         // Fallback to configured settings or defaults
         streamSettings = {
@@ -354,8 +342,7 @@ class StreamSwitcher {
           fps: this.config.streamOpts.fps || 30,
           bitrateKbps: this.config.streamOpts.bitrateKbps || 2000,
           maxBitrateKbps: this.config.streamOpts.maxBitrateKbps || 3000,
-          hardwareAcceleration:
-            this.config.streamOpts.hardwareAcceleration || false,
+          hardwareAcceleration: this.config.streamOpts.hardwareAcceleration || false,
           videoCodec: this.config.streamOpts.videoCodec || "H264",
         };
       }
@@ -367,8 +354,7 @@ class StreamSwitcher {
         fps: this.config.streamOpts.fps || 30,
         bitrateKbps: this.config.streamOpts.bitrateKbps || 2000,
         maxBitrateKbps: this.config.streamOpts.maxBitrateKbps || 3000,
-        hardwareAcceleration:
-          this.config.streamOpts.hardwareAcceleration || false,
+        hardwareAcceleration: this.config.streamOpts.hardwareAcceleration || false,
         videoCodec: this.config.streamOpts.videoCodec || "H264",
       };
     }
@@ -387,17 +373,11 @@ class StreamSwitcher {
         resolution: `${streamSettings.width}x${streamSettings.height}`,
         fps: streamSettings.fps,
         bitrate: `${streamSettings.bitrateKbps}kbps`,
-      },
+      }
     );
 
     // Basic input options
-    const inputOptions = [
-      "-re",
-      "-analyzeduration",
-      "10000000",
-      "-probesize",
-      "10000000",
-    ];
+    const inputOptions = ["-re", "-analyzeduration", "10000000", "-probesize", "10000000"];
 
     // Remove hardware decoding to avoid filter incompatibilities
     // Only use NVENC for encoding, not decoding
@@ -434,14 +414,7 @@ class StreamSwitcher {
     command.size(`${streamSettings.width}x${streamSettings.height}`);
 
     // Configure output options based on hardware acceleration
-    const outputOptions = [
-      "-g",
-      String(streamSettings.fps * 2),
-      "-map",
-      "0:v:0",
-      "-map",
-      "0:a:0?",
-    ];
+    const outputOptions = ["-g", String(streamSettings.fps * 2), "-map", "0:v:0", "-map", "0:a:0?"];
 
     if (streamSettings.hardwareAcceleration) {
       // NVIDIA NVENC specific options
@@ -459,7 +432,7 @@ class StreamSwitcher {
         "-rc-lookahead",
         "8", // Reduced lookahead for lower latency
         "-gpu",
-        "0", // Use first GPU
+        "0" // Use first GPU
       );
     } else {
       // Software encoding options
@@ -473,7 +446,7 @@ class StreamSwitcher {
         "-profile:v",
         "baseline",
         "-level",
-        "3.1",
+        "3.1"
       );
     }
 
@@ -485,10 +458,7 @@ class StreamSwitcher {
 
     // Handle FFmpeg errors
     command.on("error", (error) => {
-      if (
-        !error.message.includes("signal 15") &&
-        !error.message.includes("code 255")
-      ) {
+      if (!error.message.includes("signal 15") && !error.message.includes("code 255")) {
         streamLogger.error("FFmpeg process error during switch", {
           error: error.message,
           url: url,
@@ -507,7 +477,7 @@ class StreamSwitcher {
         streamLogger.info("Aborting FFmpeg process during switch");
         command.kill("SIGTERM");
       },
-      { once: true },
+      { once: true }
     );
 
     // Start new FFmpeg process
@@ -642,11 +612,7 @@ class DiscordStreamBot {
 
     this.client.on("messageCreate", async (message) => {
       // Filter out bots and optionally webhooks based on config
-      if (
-        message.author.bot &&
-        (!this.config.allowWebhooks || !message.webhookId)
-      )
-        return;
+      if (message.author.bot && (!this.config.allowWebhooks || !message.webhookId)) return;
 
       // Log webhook messages for debugging
       if (message.webhookId) {
@@ -692,10 +658,7 @@ class DiscordStreamBot {
   }
 
   private async handleCommand(message: any): Promise<void> {
-    const args = message.content
-      .slice(this.commandPrefix.length)
-      .trim()
-      .split(/ +/);
+    const args = message.content.slice(this.commandPrefix.length).trim().split(/ +/);
     const command = args.shift()?.toLowerCase();
 
     // Log all received commands
@@ -736,7 +699,7 @@ class DiscordStreamBot {
             userTag: message.author.tag,
           });
           await message.reply(
-            `❌ Unknown command. Use \`${this.commandPrefix}help\` for available commands.`,
+            `❌ Unknown command. Use \`${this.commandPrefix}help\` for available commands.`
           );
       }
 
@@ -759,13 +722,10 @@ class DiscordStreamBot {
     }
   }
 
-  private async handleStreamCommand(
-    message: any,
-    args: string[],
-  ): Promise<void> {
+  private async handleStreamCommand(message: any, args: string[]): Promise<void> {
     if (args.length === 0) {
       await message.reply(
-        `❌ Please provide a URL. Usage: \`${this.commandPrefix}stream [--channel-id <channel_id>] <url>\``,
+        `❌ Please provide a URL. Usage: \`${this.commandPrefix}stream [--channel-id <channel_id>] <url>\``
       );
       return;
     }
@@ -789,9 +749,7 @@ class DiscordStreamBot {
         userId: message.author.id,
         userTag: message.author.tag,
       });
-      await message.reply(
-        "❌ Invalid URL. Please provide a valid HTTP, HTTPS, or RTMP URL.",
-      );
+      await message.reply("❌ Invalid URL. Please provide a valid HTTP, HTTPS, or RTMP URL.");
       return;
     }
 
@@ -817,10 +775,7 @@ class DiscordStreamBot {
 
         try {
           // Switch stream source without stopping Discord stream
-          await this.streamSwitcher.switchTo(
-            url,
-            this.currentController?.signal,
-          );
+          await this.streamSwitcher.switchTo(url, this.currentController?.signal);
           this.currentStreamUrl = url;
 
           const successMsg = `✅ Switched to: \`${url}\` (${this.config.streamOpts.width}x${this.config.streamOpts.height}@${this.config.streamOpts.fps}fps, ${this.config.streamOpts.bitrateKbps}kbps)`;
@@ -831,16 +786,11 @@ class DiscordStreamBot {
           });
           return;
         } catch (error: any) {
-          streamLogger.error(
-            "Failed to switch stream seamlessly, falling back to restart",
-            {
-              error: error.message,
-              url,
-            },
-          );
-          await message.reply(
-            "⚠️ Seamless switch failed, restarting stream...",
-          );
+          streamLogger.error("Failed to switch stream seamlessly, falling back to restart", {
+            error: error.message,
+            url,
+          });
+          await message.reply("⚠️ Seamless switch failed, restarting stream...");
 
           // Fall back to full restart
           if (this.currentController) {
@@ -883,15 +833,9 @@ class DiscordStreamBot {
       // Try to fetch the specified channel
       try {
         const targetChannel = await this.client.channels.fetch(channelId);
-        if (
-          !targetChannel ||
-          !("joinable" in targetChannel) ||
-          !("speakable" in targetChannel)
-        ) {
+        if (!targetChannel || !("joinable" in targetChannel) || !("speakable" in targetChannel)) {
           // Check if it's a voice-capable channel using duck typing
-          await message.reply(
-            `❌ Channel ID \`${channelId}\` is not a valid voice channel.`,
-          );
+          await message.reply(`❌ Channel ID \`${channelId}\` is not a valid voice channel.`);
           return;
         }
         voiceChannel = targetChannel;
@@ -902,7 +846,7 @@ class DiscordStreamBot {
         });
       } catch (_error) {
         await message.reply(
-          `❌ Could not find voice channel with ID \`${channelId}\`. Please check the channel ID.`,
+          `❌ Could not find voice channel with ID \`${channelId}\`. Please check the channel ID.`
         );
         return;
       }
@@ -911,7 +855,7 @@ class DiscordStreamBot {
       voiceChannel = message.author.voice?.channel;
       if (!voiceChannel) {
         await message.reply(
-          "❌ You need to be in a voice channel first! Please join a voice channel or use `--channel-id <channel_id>` to specify one.",
+          "❌ You need to be in a voice channel first! Please join a voice channel or use `--channel-id <channel_id>` to specify one."
         );
         return;
       }
@@ -922,10 +866,7 @@ class DiscordStreamBot {
     try {
       // Only join if not already in the target channel
       const currentConnection = this.streamer.voiceConnection;
-      if (
-        !currentConnection ||
-        currentConnection.channelId !== voiceChannel.id
-      ) {
+      if (!currentConnection || currentConnection.channelId !== voiceChannel.id) {
         botLogger.info("Joining voice channel", {
           guildId: message.guildId || voiceChannel.guildId,
           channelId: voiceChannel.id,
@@ -975,7 +916,7 @@ class DiscordStreamBot {
             type: "go-live",
             readrateInitialBurst: 10, // For low latency
           },
-          this.currentController.signal,
+          this.currentController.signal
         );
       } catch (playStreamError: any) {
         // Handle playStream errors gracefully
@@ -1061,9 +1002,7 @@ class DiscordStreamBot {
     this.streamer.leaveVoice();
     this.updatePresence();
 
-    await message.reply(
-      "👋 Disconnected from voice channel and stopped streaming.",
-    );
+    await message.reply("👋 Disconnected from voice channel and stopped streaming.");
     botLogger.info("Disconnected from voice channel", {
       userId: message.author.id,
       userTag: message.author.tag,

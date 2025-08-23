@@ -168,7 +168,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install detect-secrets
-        run: pip install detect-secrets
+        run: pip install detect-secrets gibberish-detector
 
       - name: Run detect-secrets
         run: detect-secrets scan --baseline .secrets.baseline
