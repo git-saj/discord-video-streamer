@@ -24,6 +24,7 @@ pkgs.mkShell {
     hadolint
     shellcheck
     nodePackages.markdownlint-cli
+    commitizen
     # Video/audio processing tools
     libsodium
     pkg-config
