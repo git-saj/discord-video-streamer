@@ -315,7 +315,7 @@ git cz              # Commit with conventional commit format
 
 ### Pre-commit Hooks
 
-This project uses pre-commit hooks to ensure code qualitys:
+This project uses pre-commit hooks to ensure code quality:
 
 ```bash
 # Install pre-commit hooks (done automatically in Nix shell)
