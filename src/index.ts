@@ -400,46 +400,72 @@ class DiscordStreamBot {
       currentStream: this.currentStreamUrl,
     });
 
-    if (this.isStreaming && this.streamSwitcher) {
-      streamLogger.info("Switching to new stream seamlessly", {
-        oldStream: this.currentStreamUrl,
-        newStream: url,
-      });
-      await message.reply("🔄 Switching to new stream...");
-
-      try {
-        // Switch stream source without stopping Discord stream
-        await this.streamSwitcher.switchTo(url, this.currentController?.signal);
-        this.currentStreamUrl = url;
-
-        const successMsg = `✅ Switched to: \`${url}\` (${this.config.streamOpts.width}x${this.config.streamOpts.height}@${this.config.streamOpts.fps}fps, ${this.config.streamOpts.bitrateKbps}kbps)`;
-        await message.reply(successMsg);
-
-        streamLogger.info("Stream switch completed", {
+    if (this.isStreaming) {
+      // Check if we have StreamSwitcher for seamless switching
+      if (this.streamSwitcher) {
+        streamLogger.info("Switching to new stream seamlessly", {
+          oldStream: this.currentStreamUrl,
           newStream: url,
         });
-        return;
-      } catch (error: any) {
-        streamLogger.error(
-          "Failed to switch stream seamlessly, falling back to restart",
-          {
-            error: error.message,
-            url,
-          },
-        );
-        await message.reply("⚠️ Seamless switch failed, restarting stream...");
+        await message.reply("🔄 Switching to new stream...");
 
-        // Fall back to full restart
+        try {
+          // Switch stream source without stopping Discord stream
+          await this.streamSwitcher.switchTo(
+            url,
+            this.currentController?.signal,
+          );
+          this.currentStreamUrl = url;
+
+          const successMsg = `✅ Switched to: \`${url}\` (${this.config.streamOpts.width}x${this.config.streamOpts.height}@${this.config.streamOpts.fps}fps, ${this.config.streamOpts.bitrateKbps}kbps)`;
+          await message.reply(successMsg);
+
+          streamLogger.info("Stream switch completed", {
+            newStream: url,
+          });
+          return;
+        } catch (error: any) {
+          streamLogger.error(
+            "Failed to switch stream seamlessly, falling back to restart",
+            {
+              error: error.message,
+              url,
+            },
+          );
+          await message.reply(
+            "⚠️ Seamless switch failed, restarting stream...",
+          );
+
+          // Fall back to full restart
+          if (this.currentController) {
+            this.currentController.abort();
+            delete this.currentController;
+          }
+          this.isStreaming = false;
+          this.streamSwitcher?.cleanup();
+          this.streamSwitcher = null;
+          delete this.currentStreamUrl;
+
+          // Give time for cleanup
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      } else {
+        // No StreamSwitcher available, need to do full restart
+        streamLogger.info("No StreamSwitcher available, doing full restart", {
+          oldStream: this.currentStreamUrl,
+          newStream: url,
+        });
+        await message.reply("🔄 Restarting stream with new source...");
+
+        // Stop current stream and wait for cleanup
         if (this.currentController) {
           this.currentController.abort();
           delete this.currentController;
         }
         this.isStreaming = false;
-        this.streamSwitcher?.cleanup();
-        this.streamSwitcher = null;
         delete this.currentStreamUrl;
 
-        // Give time for cleanup
+        // Give time for the stream to properly close
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }
