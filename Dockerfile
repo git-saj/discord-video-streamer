@@ -29,6 +29,7 @@ RUN pnpm build
 FROM jrottenberg/ffmpeg:6.0-nvidia2204
 
 # Install Node.js and runtime dependencies
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apt-get update && apt-get install -y \
     curl \
     gnupg \
