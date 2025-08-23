@@ -315,7 +315,7 @@ git cz              # Commit with conventional commit format
 
 ### Pre-commit Hooks
 
-This project uses pre-commit hooks to ensure code quality:
+This project uses pre-commit hooks to ensure code qualitys:
 
 ```bash
 # Install pre-commit hooks (done automatically in Nix shell)
@@ -393,7 +393,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 **🛡️ Enterprise-Grade Quality:**
 
 - **Pre-commit Hooks**: Automatic code formatting, linting, and security scanning
-- **CI/CD Pipeline**: Comprehensive testing, security audits, and quality checks  
+- **CI/CD Pipeline**: Comprehensive testing, security audits, and quality checks
 - **Secret Detection**: Prevents credential leaks with baseline scanning
 - **Docker Security**: Best practices with non-root user and health checks
 - **Dependency Security**: Automated vulnerability scanning and updates
@@ -410,7 +410,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ```bash
 # Join a voice channel first, then:
 !stream <url>     # Stream video from URL (bot joins your channel)
-!stop            # Stop current stream  
+!stop            # Stop current stream
 !disconnect      # Leave voice channel
 !status          # Show bot status
 !help            # Show all commands
