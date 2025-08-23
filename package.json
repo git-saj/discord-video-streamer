@@ -13,8 +13,6 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "type-check": "tsc --noEmit",
-    "pre-commit": "lint-staged",
-    "prepare": "husky install",
     "test": "echo \"No tests yet\" && exit 0",
     "approve-builds": "pnpm config set scripts-prepend-node-path true && pnpm config set ignore-scripts false",
     "setup": "pnpm approve-builds && pnpm install && pnpm build"
@@ -31,18 +29,7 @@
     "@types/node": "^24.3.0",
     "commitizen": "^4.3.1",
     "cz-conventional-changelog": "^3.3.0",
-    "husky": "^9.1.7",
-    "lint-staged": "^15.3.0",
     "typescript": "^5.8.2"
-  },
-  "lint-staged": {
-    "*.{ts,js,json}": [
-      "biome format --write",
-      "biome lint --write"
-    ],
-    "*.ts": [
-      "tsc --noEmit"
-    ]
   },
   "config": {
     "commitizen": {
