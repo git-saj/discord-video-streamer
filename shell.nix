@@ -36,6 +36,7 @@ pkgs.mkShell {
     # Additional media tools
     yt-dlp
     mediainfo
+    bc
   ];
 
   # Environment variables

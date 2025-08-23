@@ -1,6 +1,11 @@
 import { Client, StageChannel } from "discord.js-selfbot-v13";
 import { Streamer, playStream } from "@dank074/discord-video-stream";
-import { loadConfig, validateStreamUrl, type BotConfig } from "./config.js";
+import {
+  loadConfig,
+  validateStreamUrl,
+  type BotConfig,
+  type StreamConfig,
+} from "./config.js";
 import ffmpeg from "fluent-ffmpeg";
 import { PassThrough } from "node:stream";
 import {
@@ -10,6 +15,291 @@ import {
   logFFmpegOutput,
   logStreamStatus,
 } from "./logger.js";
+import { execSync } from "node:child_process";
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+
+// Hardware acceleration detection
+interface NvidiaInfo {
+  available: boolean;
+  gpuCount: number;
+  gpuInfo: string[];
+  nvencSupported: boolean;
+}
+
+// Stream analysis interfaces
+interface StreamAnalysis {
+  width: number;
+  height: number;
+  fps: number;
+  bitrate?: number;
+  codec?: string;
+  duration?: number;
+}
+
+interface AdaptiveStreamSettings {
+  width: number;
+  height: number;
+  fps: number;
+  bitrateKbps: number;
+  maxBitrateKbps: number;
+  hardwareAcceleration: boolean;
+  videoCodec: string;
+}
+
+async function detectNvidiaCapabilities(): Promise<NvidiaInfo> {
+  const result: NvidiaInfo = {
+    available: false,
+    gpuCount: 0,
+    gpuInfo: [],
+    nvencSupported: false,
+  };
+
+  try {
+    // Check for NVIDIA devices in container (fallback method)
+    // Check if NVIDIA devices are available
+    const nvidiaDevices = ["/dev/nvidia0", "/dev/nvidiactl", "/dev/nvidia-uvm"];
+
+    let deviceCount = 0;
+    for (const device of nvidiaDevices) {
+      try {
+        if (fs.existsSync(device)) {
+          deviceCount++;
+        }
+      } catch {
+        // Ignore individual device check failures
+      }
+    }
+
+    if (deviceCount >= 2) {
+      // At least nvidia0 and nvidiactl
+      result.available = true;
+      result.gpuCount = 1; // Assume 1 GPU for now
+      result.gpuInfo = ["NVIDIA GPU (detected via device files)"];
+    }
+
+    // Check for NVENC support by testing ffmpeg encoders
+    try {
+      const ffmpegOutput = execSync("ffmpeg -hide_banner -encoders", {
+        encoding: "utf8",
+        timeout: 5000,
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      result.nvencSupported =
+        ffmpegOutput.includes("h264_nvenc") || ffmpegOutput.includes("nvenc");
+    } catch {
+      result.nvencSupported = false;
+    }
+  } catch (error) {
+    streamLogger.warn("NVIDIA GPU detection failed", {
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+
+  return result;
+}
+
+async function analyzeInputStream(url: string): Promise<StreamAnalysis> {
+  return new Promise((resolve, reject) => {
+    const ffprobe = spawn("ffprobe", [
+      "-v",
+      "quiet",
+      "-print_format",
+      "json",
+      "-show_streams",
+      "-select_streams",
+      "v:0",
+      "-analyzeduration",
+      "5000000",
+      "-probesize",
+      "5000000",
+      url,
+    ]);
+
+    let output = "";
+    ffprobe.stdout.on("data", (data) => {
+      output += data.toString();
+    });
+
+    ffprobe.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`ffprobe failed with code ${code}`));
+        return;
+      }
+
+      try {
+        const probe = JSON.parse(output);
+        const videoStream = probe.streams[0];
+
+        if (!videoStream) {
+          reject(new Error("No video stream found"));
+          return;
+        }
+
+        // Calculate FPS from various possible fields
+        let fps = 30; // Default fallback
+        if (videoStream.r_frame_rate) {
+          const [num, den] = videoStream.r_frame_rate.split("/").map(Number);
+          if (den && den !== 0) fps = Math.round(num / den);
+        } else if (videoStream.avg_frame_rate) {
+          const [num, den] = videoStream.avg_frame_rate.split("/").map(Number);
+          if (den && den !== 0) fps = Math.round(num / den);
+        }
+
+        // Sanitize FPS to reasonable values
+        fps = Math.min(Math.max(fps, 15), 120);
+
+        const analysis: StreamAnalysis = {
+          width: videoStream.width || 1280,
+          height: videoStream.height || 720,
+          fps: fps,
+          ...(videoStream.bit_rate && {
+            bitrate: parseInt(videoStream.bit_rate, 10),
+          }),
+          ...(videoStream.codec_name && { codec: videoStream.codec_name }),
+          ...(videoStream.duration && {
+            duration: parseFloat(videoStream.duration),
+          }),
+        };
+
+        streamLogger.info("Input stream analyzed", {
+          originalResolution: `${analysis.width}x${analysis.height}`,
+          originalFps: analysis.fps,
+          originalCodec: analysis.codec,
+          originalBitrate: analysis.bitrate
+            ? `${Math.round(analysis.bitrate / 1000)}kbps`
+            : "unknown",
+        });
+
+        resolve(analysis);
+      } catch (error) {
+        reject(new Error(`Failed to parse ffprobe output: ${error}`));
+      }
+    });
+
+    ffprobe.on("error", (error) => {
+      reject(new Error(`ffprobe error: ${error.message}`));
+    });
+
+    // Timeout after 15 seconds
+    setTimeout(() => {
+      ffprobe.kill();
+      reject(new Error("Stream analysis timed out"));
+    }, 15000);
+  });
+}
+
+function generateOptimalSettings(
+  analysis: StreamAnalysis,
+  hardwareAccel: boolean,
+): {
+  width: number;
+  height: number;
+  fps: number;
+  bitrateKbps: number;
+  maxBitrateKbps: number;
+} {
+  const { width, height, fps } = analysis;
+
+  // Determine optimal resolution based on input
+  let targetWidth = width;
+  let targetHeight = height;
+
+  // Scale down very high resolutions for better performance/bandwidth
+  if (width > 3840 || height > 2160) {
+    // 4K+ -> 1440p
+    targetWidth = 2560;
+    targetHeight = 1440;
+  } else if (width > 2560 || height > 1440) {
+    // 1440p+ -> 1080p
+    targetWidth = 1920;
+    targetHeight = 1080;
+  } else if (width > 1920 || height > 1080) {
+    // 1080p+ -> keep 1080p
+    targetWidth = 1920;
+    targetHeight = 1080;
+  }
+  // Keep anything 1080p and below as-is
+
+  // Ensure even dimensions for video encoding
+  targetWidth = Math.floor(targetWidth / 2) * 2;
+  targetHeight = Math.floor(targetHeight / 2) * 2;
+
+  // Cap framerate to reasonable values
+  let targetFps = Math.min(fps, 60);
+  if (targetFps > 50) targetFps = 60;
+  else if (targetFps > 30) targetFps = 50;
+  else if (targetFps > 25) targetFps = 30;
+  else targetFps = 25;
+
+  // Calculate bitrate based on resolution and framerate
+  const pixelCount = targetWidth * targetHeight;
+  let baseBitrate: number;
+
+  if (pixelCount >= 3686400) {
+    // 1440p+
+    baseBitrate = hardwareAccel ? 4000 : 3000;
+  } else if (pixelCount >= 2073600) {
+    // 1080p
+    baseBitrate = hardwareAccel ? 3000 : 2500;
+  } else if (pixelCount >= 921600) {
+    // 720p
+    baseBitrate = hardwareAccel ? 2000 : 1500;
+  } else {
+    // 480p and below
+    baseBitrate = hardwareAccel ? 1000 : 800;
+  }
+
+  // Adjust for framerate
+  const fpsMultiplier = targetFps > 30 ? 1.4 : 1.0;
+  const targetBitrate = Math.round(baseBitrate * fpsMultiplier);
+  const maxBitrate = Math.round(targetBitrate * 1.5);
+
+  streamLogger.info("Generated optimal settings", {
+    inputResolution: `${width}x${height}`,
+    outputResolution: `${targetWidth}x${targetHeight}`,
+    inputFps: fps,
+    outputFps: targetFps,
+    bitrate: `${targetBitrate}kbps`,
+    maxBitrate: `${maxBitrate}kbps`,
+    hardwareAcceleration: hardwareAccel,
+  });
+
+  return {
+    width: targetWidth,
+    height: targetHeight,
+    fps: targetFps,
+    bitrateKbps: targetBitrate,
+    maxBitrateKbps: maxBitrate,
+  };
+}
+
+async function logHardwareAcceleration(config: StreamConfig): Promise<void> {
+  if (!config.hardwareAcceleration) {
+    streamLogger.info("Hardware acceleration disabled in config");
+    return;
+  }
+
+  const nvidiaInfo = await detectNvidiaCapabilities();
+
+  if (nvidiaInfo.available) {
+    streamLogger.info("NVIDIA GPU detected for hardware acceleration", {
+      gpuCount: nvidiaInfo.gpuCount,
+      nvencSupported: nvidiaInfo.nvencSupported,
+      gpus: nvidiaInfo.gpuInfo,
+    });
+
+    if (!nvidiaInfo.nvencSupported) {
+      streamLogger.warn(
+        "NVENC encoder not detected in FFmpeg - will fall back to software encoding",
+      );
+    }
+  } else {
+    streamLogger.warn(
+      "Hardware acceleration enabled but no NVIDIA GPU detected",
+    );
+  }
+}
 
 class StreamSwitcher {
   private mainOutput: PassThrough;
@@ -31,50 +321,163 @@ class StreamSwitcher {
       hasCurrentStream: !!this.currentCommand,
     });
 
+    // Analyze input stream if adaptive settings are enabled
+    let streamSettings: AdaptiveStreamSettings;
+
+    if (this.config.streamOpts.adaptiveSettings !== false) {
+      try {
+        streamLogger.info("Analyzing input stream for adaptive settings...");
+        const analysis = await analyzeInputStream(url);
+        const optimalSettings = generateOptimalSettings(
+          analysis,
+          this.config.streamOpts.hardwareAcceleration || false,
+        );
+
+        streamSettings = {
+          ...optimalSettings,
+          hardwareAcceleration:
+            this.config.streamOpts.hardwareAcceleration || false,
+          videoCodec: this.config.streamOpts.videoCodec || "H264",
+        };
+      } catch (error) {
+        streamLogger.warn(
+          "Failed to analyze input stream, using fallback settings",
+          {
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
+
+        // Fallback to configured settings or defaults
+        streamSettings = {
+          width: this.config.streamOpts.width || 1280,
+          height: this.config.streamOpts.height || 720,
+          fps: this.config.streamOpts.fps || 30,
+          bitrateKbps: this.config.streamOpts.bitrateKbps || 2000,
+          maxBitrateKbps: this.config.streamOpts.maxBitrateKbps || 3000,
+          hardwareAcceleration:
+            this.config.streamOpts.hardwareAcceleration || false,
+          videoCodec: this.config.streamOpts.videoCodec || "H264",
+        };
+      }
+    } else {
+      // Use configured settings when adaptive mode is disabled
+      streamSettings = {
+        width: this.config.streamOpts.width || 1280,
+        height: this.config.streamOpts.height || 720,
+        fps: this.config.streamOpts.fps || 30,
+        bitrateKbps: this.config.streamOpts.bitrateKbps || 2000,
+        maxBitrateKbps: this.config.streamOpts.maxBitrateKbps || 3000,
+        hardwareAcceleration:
+          this.config.streamOpts.hardwareAcceleration || false,
+        videoCodec: this.config.streamOpts.videoCodec || "H264",
+      };
+    }
+
     // Create new FFmpeg command
     const newOutput = new PassThrough();
     const command = ffmpeg(url);
 
+    // Log hardware acceleration status
+    streamLogger.info(
+      streamSettings.hardwareAcceleration
+        ? "Attempting to initialize stream with NVIDIA hardware acceleration"
+        : "Initializing stream with software encoding",
+      {
+        codec: streamSettings.videoCodec,
+        resolution: `${streamSettings.width}x${streamSettings.height}`,
+        fps: streamSettings.fps,
+        bitrate: `${streamSettings.bitrateKbps}kbps`,
+      },
+    );
+
     // Basic input options
-    command.inputOptions([
+    const inputOptions = [
       "-re",
       "-analyzeduration",
       "10000000",
       "-probesize",
       "10000000",
-    ]);
+    ];
 
-    // Simple output configuration
+    // Remove hardware decoding to avoid filter incompatibilities
+    // Only use NVENC for encoding, not decoding
+
+    command.inputOptions(inputOptions);
+
+    // Configure video codec based on hardware acceleration
+    let videoCodec = "libx264";
+    let preset = "veryfast";
+
+    if (streamSettings.hardwareAcceleration) {
+      // Use NVIDIA NVENC hardware encoders
+      if (streamSettings.videoCodec === "H264") {
+        videoCodec = "h264_nvenc"; // NVIDIA hardware encoder
+        preset = "p4"; // NVENC preset for balanced quality/speed
+      } else if (streamSettings.videoCodec === "H265") {
+        videoCodec = "hevc_nvenc";
+        preset = "p4";
+      }
+    }
+
+    // Output configuration
     command
       .outputFormat("matroska")
-      .videoCodec("libx264")
-      .size(`${this.config.streamOpts.width}x${this.config.streamOpts.height}`)
-      .fps(this.config.streamOpts.fps)
-      .videoBitrate(`${this.config.streamOpts.bitrateKbps}k`)
+      .videoCodec(videoCodec)
+      .fps(streamSettings.fps)
+      .videoBitrate(`${streamSettings.bitrateKbps}k`)
       .audioCodec("libopus")
       .audioChannels(2)
       .audioFrequency(48000)
       .audioBitrate("128k");
 
-    // Add essential output options
-    command.outputOptions([
-      "-preset",
-      "veryfast",
-      "-tune",
-      "zerolatency",
-      "-pix_fmt",
-      "yuv420p",
-      "-profile:v",
-      "baseline",
-      "-level",
-      "3.1",
+    // Use CPU-based scaling for all cases to avoid filter issues
+    command.size(`${streamSettings.width}x${streamSettings.height}`);
+
+    // Configure output options based on hardware acceleration
+    const outputOptions = [
       "-g",
-      String(this.config.streamOpts.fps * 2),
+      String(streamSettings.fps * 2),
       "-map",
       "0:v:0",
       "-map",
       "0:a:0?",
-    ]);
+    ];
+
+    if (streamSettings.hardwareAcceleration) {
+      // NVIDIA NVENC specific options
+      outputOptions.push(
+        "-preset",
+        preset,
+        "-tune",
+        "ll", // Low latency tuning for NVENC
+        "-profile:v",
+        "main",
+        "-pix_fmt",
+        "yuv420p",
+        "-b_ref_mode",
+        "0", // Disable B-frame reference for lower latency
+        "-rc-lookahead",
+        "8", // Reduced lookahead for lower latency
+        "-gpu",
+        "0", // Use first GPU
+      );
+    } else {
+      // Software encoding options
+      outputOptions.push(
+        "-preset",
+        preset,
+        "-tune",
+        "zerolatency",
+        "-pix_fmt",
+        "yuv420p",
+        "-profile:v",
+        "baseline",
+        "-level",
+        "3.1",
+      );
+    }
+
+    command.outputOptions(outputOptions);
 
     command.output(newOutput);
 
@@ -204,7 +607,7 @@ class DiscordStreamBot {
   }
 
   private setupEventHandlers(): void {
-    this.client.on("ready", () => {
+    this.client.on("ready", async () => {
       // Set initial bot presence
       this.updatePresence();
 
@@ -224,11 +627,14 @@ class DiscordStreamBot {
           `${this.commandPrefix}help - Show help message`,
         ],
       });
-      botLogger.info("Bot configuration:", {
-        streamWidth: this.config.streamOpts.width,
-        streamHeight: this.config.streamOpts.height,
-        streamFps: this.config.streamOpts.fps,
-        streamBitrate: this.config.streamOpts.bitrateKbps,
+      // Detect and log hardware acceleration capabilities
+      await logHardwareAcceleration(this.config.streamOpts);
+      botLogger.info("Bot configuration", {
+        adaptiveStreaming: this.config.streamOpts.adaptiveSettings !== false,
+        streamWidth: this.config.streamOpts.width || "adaptive",
+        streamHeight: this.config.streamOpts.height || "adaptive",
+        streamFps: this.config.streamOpts.fps || "adaptive",
+        streamBitrate: this.config.streamOpts.bitrateKbps || "adaptive",
         hardwareAcceleration: this.config.streamOpts.hardwareAcceleration,
         videoCodec: this.config.streamOpts.videoCodec,
       });
@@ -697,13 +1103,34 @@ class DiscordStreamBot {
     statusMessage += "```\n";
     statusMessage += "**📺 Stream Configuration**\n";
     statusMessage += "```yaml\n";
-    statusMessage += `Resolution:   ${this.config.streamOpts.width}x${this.config.streamOpts.height}\n`;
-    statusMessage += `Framerate:    ${this.config.streamOpts.fps} FPS\n`;
-    statusMessage += `Bitrate:      ${this.config.streamOpts.bitrateKbps} kbps\n`;
-    statusMessage += `Max Bitrate:  ${this.config.streamOpts.maxBitrateKbps} kbps\n`;
+    const adaptiveMode = this.config.streamOpts.adaptiveSettings !== false;
+    statusMessage += `Adaptive:     ${adaptiveMode ? "Enabled" : "Disabled"}\n`;
+    if (!adaptiveMode) {
+      statusMessage += `Resolution:   ${this.config.streamOpts.width || "N/A"}x${this.config.streamOpts.height || "N/A"}\n`;
+      statusMessage += `Frame Rate:   ${this.config.streamOpts.fps || "N/A"} fps\n`;
+      statusMessage += `Bitrate:      ${this.config.streamOpts.bitrateKbps || "N/A"} kbps\n`;
+      statusMessage += `Max Bitrate:  ${this.config.streamOpts.maxBitrateKbps || "N/A"} kbps\n`;
+    } else {
+      statusMessage += `Resolution:   Auto (based on input)\n`;
+      statusMessage += `Frame Rate:   Auto (based on input)\n`;
+      statusMessage += `Bitrate:      Auto (optimized)\n`;
+    }
     statusMessage += `Codec:        ${this.config.streamOpts.videoCodec}\n`;
-    statusMessage += `HW Accel:     ${this.config.streamOpts.hardwareAcceleration ? "Enabled" : "Disabled"}\n`;
+    statusMessage += `HW Accel:     ${this.config.streamOpts.hardwareAcceleration ? "Enabled (NVENC)" : "Disabled"}\n`;
     statusMessage += "```\n";
+
+    // Add hardware acceleration status if enabled
+    if (this.config.streamOpts.hardwareAcceleration) {
+      const nvidiaInfo = await detectNvidiaCapabilities();
+      if (nvidiaInfo.available) {
+        statusMessage += "\n**🎮 Hardware Acceleration**\n```\n";
+        statusMessage += `GPU Count: ${nvidiaInfo.gpuCount}\n`;
+        nvidiaInfo.gpuInfo.forEach((gpu, index) => {
+          statusMessage += `GPU ${index + 1}: ${gpu}\n`;
+        });
+        statusMessage += "```\n";
+      }
+    }
 
     statusMessage += `**🎮 Quick Commands**\n`;
     statusMessage += `• \`${this.commandPrefix}stream <url>\` - Start streaming (seamless switching)\n`;

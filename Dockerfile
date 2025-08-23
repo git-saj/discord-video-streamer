@@ -1,14 +1,15 @@
-# Simplified multi-stage Alpine Dockerfile
-FROM node:24-alpine AS builder
+# Multi-stage Dockerfile with NVENC support using pre-built FFmpeg
+FROM node:24-bullseye AS node-builder
 
 # Install build dependencies
-RUN apk add --no-cache --virtual .build-deps \
+RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
-    pkgconfig \
+    pkg-config \
     libsodium-dev \
-    zeromq-dev
+    libzmq3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -24,25 +25,24 @@ RUN npm install -g pnpm@latest && \
 COPY . .
 RUN pnpm build
 
-# Clean up builder stage
-RUN apk del .build-deps
+# Production stage with NVENC support
+FROM jrottenberg/ffmpeg:6.0-nvidia2204
 
-# Production stage
-FROM alpine:3.20 AS production
-
-# Install runtime dependencies
-RUN apk add --no-cache \
-    nodejs \
-    npm \
-    ffmpeg \
-    libsodium \
-    zeromq \
-    dumb-init && \
-    rm -rf /var/cache/apk/*
+# Install Node.js and runtime dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    gnupg \
+    ca-certificates \
+    libsodium23 \
+    libzmq5 \
+    dumb-init \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S discordbot -u 1001 -G nodejs
+RUN groupadd -g 1001 -r nodejs && \
+    useradd -r -g nodejs -u 1001 discordbot
 
 WORKDIR /app
 
@@ -60,11 +60,15 @@ RUN pnpm config set ignore-scripts true && \
     rm -rf ~/.npm ~/.pnpm-store ~/.cache
 
 # Copy built application
-COPY --from=builder --chown=discordbot:nodejs /app/dist ./dist
+COPY --from=node-builder --chown=discordbot:nodejs /app/dist ./dist
 
 # Create logs directory
 RUN mkdir -p logs && \
     chown discordbot:nodejs logs
+
+# Set NVIDIA environment variables
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
 
 # Switch to non-root user
 USER discordbot

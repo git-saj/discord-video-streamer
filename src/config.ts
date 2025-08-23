@@ -2,13 +2,14 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 
 export interface StreamConfig {
-  width: number;
-  height: number;
-  fps: number;
-  bitrateKbps: number;
-  maxBitrateKbps: number;
+  width?: number;
+  height?: number;
+  fps?: number;
+  bitrateKbps?: number;
+  maxBitrateKbps?: number;
   hardwareAcceleration: boolean;
   videoCodec: "H264" | "H265";
+  adaptiveSettings?: boolean;
 }
 
 export interface BotConfig {
@@ -21,15 +22,11 @@ export interface BotConfig {
 const DEFAULT_CONFIG: BotConfig = {
   token: "",
   streamOpts: {
-    width: 1920,
-    height: 1080,
-    fps: 30,
-    bitrateKbps: 2500,
-    maxBitrateKbps: 4000,
     hardwareAcceleration: false,
     videoCodec: "H264",
+    adaptiveSettings: true,
   },
-  allowWebhooks: true,
+  allowWebhooks: false,
   commandPrefix: "!",
 };
 
