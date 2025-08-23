@@ -183,10 +183,11 @@ class DiscordStreamBot {
   private isStreaming = false;
   private currentStreamUrl?: string;
   private streamSwitcher?: StreamSwitcher | null;
-  private readonly commandPrefix = "!";
+  private readonly commandPrefix: string;
 
   constructor(config: BotConfig) {
     this.config = config;
+    this.commandPrefix = config.commandPrefix;
     this.client = new Client();
     this.streamer = new Streamer(this.client);
     this.setupEventHandlers();

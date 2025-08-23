@@ -4,9 +4,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+.pnpm-store/
 
-# Build outputs
-dist/
+# Build outputs (keep dist/ out since we need it for some builds)
 build/
 out/
 
@@ -49,6 +49,9 @@ docker-compose*.yml
 .editorconfig
 .prettierrc*
 biome.json
+.vscode/
+.idea/
+*.code-workspace
 
 # Testing
 coverage/
@@ -78,6 +81,8 @@ scripts/
 .pnp.*
 yarn.lock
 package-lock.json
+.npmrc
+.yarnrc*
 
 # TypeScript
 *.tsbuildinfo
@@ -94,3 +99,25 @@ package-lock.json
 
 # Local development
 .local/
+*.local
+
+# Additional exclusions for smaller build context
+*.md
+!README.md
+*.txt
+*.log
+.cache/
+.temp/
+.tmp/
+coverage/
+jest.config.*
+vitest.config.*
+cypress/
+playwright/
+e2e/
+*.spec.*
+*.test.*
+__tests__/
+__mocks__/
+.storybook/
+storybook-static/
