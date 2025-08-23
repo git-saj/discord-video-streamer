@@ -14,7 +14,6 @@ import {
 class StreamSwitcher {
   private mainOutput: PassThrough;
   private currentCommand: any = null;
-  private currentController: AbortController | null = null;
   private config: BotConfig;
 
   constructor(config: BotConfig) {
