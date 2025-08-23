@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile with multi-architecture support
+# Multi-stage Dockerfile with NVENC support using pre-built FFmpeg
 FROM node:24-bullseye AS node-builder
 
 # Install build dependencies
@@ -25,11 +25,8 @@ RUN npm install -g pnpm@latest && \
 COPY . .
 RUN pnpm build
 
-# Production stage with FFmpeg support
-FROM ubuntu:22.04
-
-# Set non-interactive frontend for apt
-ENV DEBIAN_FRONTEND=noninteractive
+# Production stage with NVENC support
+FROM jrottenberg/ffmpeg:6.0-nvidia2204
 
 # Install Node.js and runtime dependencies
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -40,24 +37,9 @@ RUN apt-get update && apt-get install -y \
     libsodium23 \
     libzmq5 \
     dumb-init \
-    software-properties-common \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs
-
-# Install FFmpeg with architecture-specific optimizations
-RUN apt-get update && \
-    if [ "$(uname -m)" = "x86_64" ]; then \
-    # For AMD64, add PPA for newer FFmpeg with NVIDIA support
-    add-apt-repository -y ppa:savoury1/ffmpeg4 || true && \
-    add-apt-repository -y ppa:savoury1/ffmpeg5 || true && \
-    apt-get update && \
-    apt-get install -y ffmpeg || \
-    (apt-get install -y ffmpeg-static || apt-get install -y ffmpeg); \
-    else \
-    # For ARM64 and other architectures, use standard FFmpeg
-    apt-get install -y ffmpeg; \
-    fi && \
-    rm -rf /var/lib/apt/lists/*
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
 RUN groupadd -g 1001 -r nodejs && \
@@ -85,7 +67,7 @@ COPY --from=node-builder --chown=discordbot:nodejs /app/dist ./dist
 RUN mkdir -p logs && \
     chown discordbot:nodejs logs
 
-# Set NVIDIA environment variables (will be ignored on non-NVIDIA systems)
+# Set NVIDIA environment variables
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
 
