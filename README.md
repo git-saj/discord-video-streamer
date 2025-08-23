@@ -321,12 +321,18 @@ This project uses pre-commit hooks to ensure code quality:
 # Install pre-commit hooks (done automatically in Nix shell)
 pre-commit install
 
+# Install all hook types including commit message validation
+pre-commit install --hook-type commit-msg --hook-type pre-commit --hook-type pre-push
+
 # Run all hooks manually
 pre-commit run --all-files
 
 # Update hook versions
 pre-commit autoupdate
 ```
+
+**Note:** The `--hook-type` flags are required to enable commit message validation with commitizen.
+Without these, the commitizen hook won't prevent invalid commit messages from being pushed.
 
 **What gets checked on every commit:**
 
@@ -350,11 +356,26 @@ pre-commit autoupdate
 7. Submit a pull request
 
 **Commit Message Format:**
-We use [Conventional Commits](https://conventionalcommits.org/):
+We use [Conventional Commits](https://conventionalcommits.org/) with automated validation:
 
 ```bash
-git cz  # Use commitizen for guided commit messages
+# Interactive commit with guided prompts (recommended)
+git cz              # or npx cz
+
+# Manual conventional commit examples
+git commit -m "feat: add video streaming support"
+git commit -m "fix: resolve authentication timeout"
+git commit -m "docs: update installation guide"
+git commit -m "chore: update dependencies"
 ```
+
+**Commit Message Validation:**
+
+- Pre-commit hooks automatically validate commit message format
+- Invalid messages are rejected with helpful error messages
+- Required format: `type(scope): description`
+- Valid types: `build`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `style`, `test`, `chore`, `revert`, `bump`
+- Scope is optional but recommended (e.g., `feat(auth): add OAuth support`)
 
 **Code Quality:**
 

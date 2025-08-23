@@ -92,12 +92,14 @@ repos:
         files: \.ts$
         pass_filenames: false
 
-  # Git commit message linting
+  # Commitizen for conventional commits
   - repo: https://github.com/commitizen-tools/commitizen
     rev: v4.8.3
     hooks:
       - id: commitizen
         stages: [commit-msg]
+      - id: commitizen-branch
+        stages: [pre-push]
 
   # YAML formatting
   - repo: https://github.com/pre-commit/mirrors-prettier
