@@ -273,10 +273,9 @@ export class HealthMonitor extends EventEmitter {
       const hasValidWebSocket = voiceConnection?.ws && voiceConnection.ws.readyState === 1; // WebSocket.OPEN = 1
 
       const hasValidStatus =
-        voiceConnection?.status &&
-        voiceConnection.status.started &&
-        voiceConnection.status.hasSession &&
-        voiceConnection.status.hasToken;
+        voiceConnection?.status?.started &&
+        voiceConnection?.status?.hasSession &&
+        voiceConnection?.status?.hasToken;
 
       const isActuallyConnected = voiceConnection && hasValidWebSocket && hasValidStatus;
 
@@ -354,10 +353,9 @@ export class HealthMonitor extends EventEmitter {
       const hasValidWebSocket = voiceConnection?.ws && voiceConnection.ws.readyState === 1; // WebSocket.OPEN = 1
 
       const hasValidStatus =
-        voiceConnection?.status &&
-        voiceConnection.status.started &&
-        voiceConnection.status.hasSession &&
-        voiceConnection.status.hasToken;
+        voiceConnection?.status?.started &&
+        voiceConnection?.status?.hasSession &&
+        voiceConnection?.status?.hasToken;
 
       const isActuallyConnected = voiceConnection && hasValidWebSocket && hasValidStatus;
       const voiceDuration = performance.now() - voiceStart;
@@ -467,10 +465,9 @@ export class HealthMonitor extends EventEmitter {
     const hasValidWebSocket = voiceConnection?.ws && voiceConnection.ws.readyState === 1; // WebSocket.OPEN = 1
 
     const hasValidStatus =
-      voiceConnection?.status &&
-      voiceConnection.status.started &&
-      voiceConnection.status.hasSession &&
-      voiceConnection.status.hasToken;
+      voiceConnection?.status?.started &&
+      voiceConnection?.status?.hasSession &&
+      voiceConnection?.status?.hasToken;
 
     const hasActiveConnection = voiceConnection && hasValidWebSocket && hasValidStatus;
 

@@ -80,7 +80,7 @@ repos:
 
       - id: biome-lint
         name: Biome Lint
-        entry: npx biome lint --write
+        entry: npx biome lint --error-on-warnings --write
         language: system
         files: \.(ts|js)$
         pass_filenames: true
