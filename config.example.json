@@ -10,5 +10,32 @@
     "maxBitrateKbps": 4000,
     "hardwareAcceleration": false,
     "videoCodec": "H264"
+  },
+  "health": {
+    "enabled": true,
+    "server": {
+      "port": 8080,
+      "host": "0.0.0.0",
+      "enableMetrics": false,
+      "enableRecoveryEndpoints": false
+    },
+    "autoRecovery": {
+      "enabled": true,
+      "maxRetriesPerHour": 10,
+      "criticalErrorThreshold": 5,
+      "autoRestartThreshold": 3,
+      "actions": {
+        "reconnectDiscord": true,
+        "reconnectVoice": true,
+        "restartStream": true,
+        "clearCache": true,
+        "forceGarbageCollection": true
+      }
+    },
+    "monitoring": {
+      "healthCheckInterval": 30000,
+      "metricsInterval": 5000,
+      "enableStreamMonitoring": true
+    }
   }
 }

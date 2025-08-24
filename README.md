@@ -16,6 +16,8 @@ optimized for 1080p 30fps streaming.
 - 🐳 **Docker Ready**: Easy deployment with Docker and docker-compose
 - 🔧 **Nix Development**: Complete development environment with Nix
 - 📊 **Real-time Status**: Check bot and stream status
+- 🏥 **Health Monitoring**: Comprehensive health checks and auto-recovery
+- 🔧 **Kubernetes Ready**: Health probes for production deployment
 - 🎯 **Performance Optimized**: Built for reliable streaming performance
 - 🔒 **Pre-commit Hooks**: Automated code quality checks and security scanning
 - 🛡️ **CI/CD Pipeline**: Comprehensive testing and validation workflows
@@ -131,6 +133,51 @@ No guild ID or user restrictions needed in config!
 | `streamOpts.hardwareAcceleration` | Enable hardware acceleration | false |
 | `streamOpts.videoCodec` | Video codec (H264/H265) | H264 |
 
+### Health System Configuration
+
+The bot includes a comprehensive health monitoring and auto-recovery system:
+
+```json
+{
+  "health": {
+    "enabled": true,
+    "server": {
+      "port": 8080,
+      "host": "0.0.0.0",
+      "enableMetrics": false,
+      "enableRecoveryEndpoints": false
+    },
+    "autoRecovery": {
+      "enabled": true,
+      "maxRetriesPerHour": 10,
+      "criticalErrorThreshold": 5,
+      "autoRestartThreshold": 3,
+      "actions": {
+        "reconnectDiscord": true,
+        "reconnectVoice": true,
+        "restartStream": true,
+        "clearCache": true,
+        "forceGarbageCollection": true
+      }
+    },
+    "monitoring": {
+      "healthCheckInterval": 30000,
+      "metricsInterval": 5000,
+      "enableStreamMonitoring": true
+    }
+  }
+}
+```
+
+| Health Option | Description | Default |
+|---------------|-------------|---------|
+| `health.enabled` | Enable health monitoring system | true |
+| `health.server.port` | Health check HTTP server port | 8080 |
+| `health.server.enableMetrics` | Enable Prometheus metrics endpoint | false |
+| `health.autoRecovery.enabled` | Enable automatic recovery actions | true |
+| `health.autoRecovery.maxRetriesPerHour` | Maximum recovery attempts per hour | 10 |
+| `health.monitoring.enableStreamMonitoring` | Monitor stream quality and performance | true |
+
 ## Docker Deployment 🐳
 
 ### Using Docker Compose (Recommended)
@@ -169,8 +216,33 @@ Once the bot is running and connected to Discord, you can use these message comm
 - `!stream <url>` - Start streaming from URL (joins your current voice channel)
 - `!stop` - Stop the current stream
 - `!disconnect` - Disconnect from voice channel
-- `!status` - Check bot status
+- `!status` - Check bot status (includes health information)
 - `!help` - Show help message
+
+### Health Monitoring Endpoints
+
+When the health system is enabled (default), the bot exposes HTTP endpoints for monitoring:
+
+- `GET http://localhost:8080/health` - General health check
+- `GET http://localhost:8080/health/live` - Kubernetes liveness probe
+- `GET http://localhost:8080/health/ready` - Kubernetes readiness probe  
+- `GET http://localhost:8080/health/startup` - Kubernetes startup probe
+- `GET http://localhost:8080/health/detailed` - Detailed health and performance metrics
+
+Example health check response:
+
+```json
+{
+  "status": "healthy",
+  "timestamp": "2024-01-15T10:30:00.000Z",
+  "checks": {
+    "discord": { "status": "pass", "message": "Connected (ping: 45ms)" },
+    "voice": { "status": "pass", "message": "Connected to channel 123456789" },
+    "memory": { "status": "pass", "message": "512.34MB used" },
+    "stream": { "status": "pass", "message": "Stream is healthy" }
+  }
+}
+```
 
 **Example:**
 
@@ -242,6 +314,78 @@ console.log('%cYou now have your token in the clipboard!', 'font-size: 16px');
 - Lower bitrate: `"bitrateKbps": 1500`
 - Use lower FPS: `"fps": 24`
 
+## Health Monitoring & Auto-Recovery 🏥
+
+The bot includes a comprehensive health monitoring system that automatically detects and recovers from common issues:
+
+### Auto-Recovery Features
+
+- **Discord Reconnection**: Automatically reconnects on connection drops
+- **Voice Channel Recovery**: Rejoins voice channels after disconnections  
+- **Stream Quality Monitoring**: Tracks frame rate, bitrate, and encoding performance
+- **Memory Management**: Automatic garbage collection and cache clearing
+- **FFmpeg Process Management**: Restarts failed encoding processes
+- **System Resource Monitoring**: Tracks CPU, memory, and GPU usage
+
+### Health Status Indicators
+
+The `!status` command now includes health information:
+
+```text
+📊 Discord Stream Bot Status
+Bot User:     YourBot#1234
+Uptime:       2h 15m 30s
+Voice:        ✅ Connected
+Streaming:    🔴 LIVE
+Health:       ✅ Healthy
+
+🏥 System Health
+Memory Usage: 512.34MB
+CPU Usage: 15.2%
+Errors: 0
+Auto-Recovery: ✅ Ready
+```
+
+### Kubernetes Deployment
+
+For production Kubernetes deployment, use the provided manifests in `k8s/`:
+
+```bash
+# Deploy with health probes configured
+kubectl apply -f k8s/deployment.yaml
+
+# Check pod health
+kubectl get pods -l app=discord-video-streamer
+kubectl describe pod <pod-name>
+```
+
+The deployment includes:
+
+- **Liveness Probe**: Restarts container if unhealthy (checks every 30s)
+- **Readiness Probe**: Removes from service if not ready (checks every 10s)  
+- **Startup Probe**: Waits for initial startup (up to 60s)
+
+### Environment Variables for Health System
+
+```bash
+# Health server configuration
+HEALTH_PORT=8080
+HEALTH_HOST=0.0.0.0
+ENABLE_METRICS=false
+ENABLE_RECOVERY_ENDPOINTS=false
+
+# Auto-recovery settings
+AUTO_RECOVERY=true
+MAX_RECOVERY_RETRIES=10
+CRITICAL_ERROR_THRESHOLD=5
+AUTO_RESTART_THRESHOLD=3
+
+# Monitoring intervals  
+HEALTH_CHECK_INTERVAL=30000
+METRICS_INTERVAL=5000
+ENABLE_STREAM_MONITORING=true
+```
+
 ## Troubleshooting 🔧
 
 ### Common Issues
@@ -266,11 +410,18 @@ console.log('%cYou now have your token in the clipboard!', 'font-size: 16px');
    - Make sure you're in a voice channel when using `!stream`
    - Try using `!help` to test basic functionality
    - Check that your Discord token is valid
+   - Check health status: `curl http://localhost:8080/health`
 
 5. **First-time setup issues**
    - Use the automated setup script: `./scripts/setup.sh`
    - This checks dependencies, installs packages, and creates config.json
    - Make sure to edit config.json with your Discord token after setup
+
+6. **Health system issues**
+   - Health endpoints not responding: Check if port 8080 is available
+   - Auto-recovery not working: Verify `health.autoRecovery.enabled: true` in config
+   - Stream quality alerts: Check network bandwidth and system resources
+   - Memory issues: Enable garbage collection with `NODE_OPTIONS="--expose-gc"`
 
 ### Debug Mode
 
@@ -278,6 +429,10 @@ Run with debug logging:
 
 ```bash
 DEBUG=* pnpm start
+
+# Check health endpoints
+curl http://localhost:8080/health
+curl http://localhost:8080/health/detailed
 ```
 
 ## Development 💻
@@ -288,7 +443,15 @@ DEBUG=* pnpm start
 discord-video-streamer/
 ├── src/
 │   ├── index.ts          # Main bot implementation
-│   └── config.ts         # Configuration management
+│   ├── config.ts         # Configuration management
+│   └── health/           # Health monitoring system
+│       ├── index.ts      # Health system main entry
+│       ├── health-monitor.ts     # Core health monitoring
+│       ├── auto-recovery.ts      # Automatic recovery system
+│       ├── health-server.ts      # HTTP health endpoints
+│       └── stream-monitor.ts     # Stream quality monitoring
+├── k8s/
+│   └── deployment.yaml   # Kubernetes manifests with health probes
 ├── scripts/
 │   └── setup.sh          # Automated setup script
 ├── config.example.json   # Example configuration

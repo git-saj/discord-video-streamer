@@ -13,6 +13,7 @@ import {
 import { execSync } from "node:child_process";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import { HealthSystem } from "./health/index.js";
 
 // Hardware acceleration detection
 interface NvidiaInfo {
@@ -195,23 +196,19 @@ function generateOptimalSettings(
 } {
   const { width, height, fps } = analysis;
 
-  // Determine optimal resolution based on input
+  // Determine optimal resolution based on input - preserve 4K for hardware acceleration
   let targetWidth = width;
   let targetHeight = height;
 
-  // Scale down very high resolutions for better performance/bandwidth
-  if (width > 3840 || height > 2160) {
-    // 4K+ -> 1440p
+  // Cap maximum resolution to 1440p for all streams above 1440p
+  if (width > 2560 || height > 1440) {
+    // Anything above 1440p -> cap to 1440p
     targetWidth = 2560;
     targetHeight = 1440;
-  } else if (width > 2560 || height > 1440) {
-    // 1440p+ -> 1080p
-    targetWidth = 1920;
-    targetHeight = 1080;
   } else if (width > 1920 || height > 1080) {
-    // 1080p+ -> keep 1080p
-    targetWidth = 1920;
-    targetHeight = 1080;
+    // 1080p+ -> keep original resolution
+    targetWidth = width;
+    targetHeight = height;
   }
   // Keep anything 1080p and below as-is
 
@@ -219,11 +216,13 @@ function generateOptimalSettings(
   targetWidth = Math.floor(targetWidth / 2) * 2;
   targetHeight = Math.floor(targetHeight / 2) * 2;
 
-  // Cap framerate to reasonable values
+  // Preserve high framerates for better motion
   let targetFps = Math.min(fps, 60);
   if (targetFps > 50) targetFps = 60;
-  else if (targetFps > 30) targetFps = 50;
-  else if (targetFps > 25) targetFps = 30;
+  else if (targetFps > 40) targetFps = 50;
+  else if (targetFps > 30) {
+    // Keep original if between 30-40
+  } else if (targetFps > 25) targetFps = 30;
   else targetFps = 25;
 
   // Calculate bitrate based on resolution and framerate
@@ -232,22 +231,28 @@ function generateOptimalSettings(
 
   if (pixelCount >= 3686400) {
     // 1440p+
-    baseBitrate = hardwareAccel ? 4000 : 3000;
+    baseBitrate = hardwareAccel ? 6000 : 4000;
   } else if (pixelCount >= 2073600) {
     // 1080p
-    baseBitrate = hardwareAccel ? 3000 : 2500;
+    baseBitrate = hardwareAccel ? 4000 : 3000;
   } else if (pixelCount >= 921600) {
     // 720p
-    baseBitrate = hardwareAccel ? 2000 : 1500;
+    baseBitrate = hardwareAccel ? 2500 : 2000;
   } else {
     // 480p and below
-    baseBitrate = hardwareAccel ? 1000 : 800;
+    baseBitrate = hardwareAccel ? 1500 : 1000;
   }
 
-  // Adjust for framerate
-  const fpsMultiplier = targetFps > 30 ? 1.4 : 1.0;
+  // Adjust for framerate - higher FPS needs more bitrate
+  let fpsMultiplier = 1.0;
+  if (targetFps >= 50) {
+    fpsMultiplier = 1.6; // 50-60 FPS needs significantly more bitrate
+  } else if (targetFps > 30) {
+    fpsMultiplier = 1.3; // 30+ FPS needs moderate increase
+  }
+
   const targetBitrate = Math.round(baseBitrate * fpsMultiplier);
-  const maxBitrate = Math.round(targetBitrate * 1.5);
+  const maxBitrate = Math.round(targetBitrate * 1.3); // Reduced from 1.5 to avoid excessive spikes
 
   streamLogger.info("Generated optimal settings", {
     inputResolution: `${width}x${height}`,
@@ -295,12 +300,24 @@ async function logHardwareAcceleration(config: StreamConfig): Promise<void> {
 
 class StreamSwitcher {
   private mainOutput: PassThrough;
-  private currentCommand: any = null;
+  public currentCommand: any = null;
   private config: BotConfig;
+  private stderrListeners: ((line: string) => void)[] = [];
 
   constructor(config: BotConfig) {
     this.mainOutput = new PassThrough();
     this.config = config;
+  }
+
+  public onStderr(callback: (line: string) => void): void {
+    this.stderrListeners.push(callback);
+  }
+
+  public removeStderrListener(callback: (line: string) => void): void {
+    const index = this.stderrListeners.indexOf(callback);
+    if (index > -1) {
+      this.stderrListeners.splice(index, 1);
+    }
   }
 
   getOutputStream(): PassThrough {
@@ -399,7 +416,7 @@ class StreamSwitcher {
       }
     }
 
-    // Output configuration
+    // Output configuration - use matroska format (audio works properly with this)
     command
       .outputFormat("matroska")
       .videoCodec(videoCodec)
@@ -414,7 +431,17 @@ class StreamSwitcher {
     command.size(`${streamSettings.width}x${streamSettings.height}`);
 
     // Configure output options based on hardware acceleration
-    const outputOptions = ["-g", String(streamSettings.fps * 2), "-map", "0:v:0", "-map", "0:a:0?"];
+    const outputOptions = [
+      "-g",
+      String(streamSettings.fps * 2),
+      "-map",
+      "0:v:0",
+      "-map",
+      "0:a:0?",
+      "-flush_packets",
+      "1",
+      "-stats", // Enable progress statistics output
+    ];
 
     if (streamSettings.hardwareAcceleration) {
       // NVIDIA NVENC specific options
@@ -432,7 +459,9 @@ class StreamSwitcher {
         "-rc-lookahead",
         "8", // Reduced lookahead for lower latency
         "-gpu",
-        "0" // Use first GPU
+        "0", // Use first GPU
+        "-strict_gop",
+        "1"
       );
     } else {
       // Software encoding options
@@ -446,7 +475,9 @@ class StreamSwitcher {
         "-profile:v",
         "baseline",
         "-level",
-        "3.1"
+        "3.1",
+        "-strict_gop",
+        "1"
       );
     }
 
@@ -454,7 +485,19 @@ class StreamSwitcher {
 
     command.output(newOutput);
 
-    command.on("stderr", (line) => logFFmpegOutput(line));
+    // Forward FFmpeg output to both logger and stream monitor
+    command.on("stderr", (line) => {
+      logFFmpegOutput(line);
+
+      // Forward to all stderr listeners (including stream monitor)
+      this.stderrListeners.forEach((callback) => {
+        try {
+          callback(line);
+        } catch (error) {
+          streamLogger.error("Error in stderr listener", { error });
+        }
+      });
+    });
 
     // Handle FFmpeg errors
     command.on("error", (error) => {
@@ -492,29 +535,49 @@ class StreamSwitcher {
       throw error;
     }
 
-    // Wait a moment for the new stream to stabilize
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    // Clean up old command first to avoid conflicts
+    // For matroska format, ensure complete cleanup to prevent container corruption
     const oldCommand = this.currentCommand;
     if (oldCommand) {
-      streamLogger.info("Cleaning up old FFmpeg process");
+      streamLogger.info("Performing thorough cleanup for stable stream switch");
+
+      // Stop old command completely and wait for full cleanup
       try {
         oldCommand.kill("SIGTERM");
+        // Extended wait for matroska container to properly close
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       } catch (error: any) {
         streamLogger.warn("Error killing old FFmpeg process", {
           error: error.message,
         });
       }
+
+      // Additional wait to ensure no lingering processes or data
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
     // Update current command reference
     this.currentCommand = command;
 
     // Set up data forwarding from new stream to main output
+    let dataCount = 0;
     newOutput.on("data", (chunk) => {
       if (!this.mainOutput.destroyed) {
-        this.mainOutput.write(chunk);
+        dataCount++;
+        if (dataCount % 1000 === 0) {
+          streamLogger.info("Stream data flowing", {
+            url,
+            chunkSize: chunk.length,
+            totalChunks: dataCount,
+          });
+        }
+        try {
+          this.mainOutput.write(chunk);
+        } catch (error: any) {
+          streamLogger.error("Error writing to main output", {
+            error: error.message,
+            url,
+          });
+        }
       }
     });
 
@@ -556,14 +619,75 @@ class DiscordStreamBot {
   private isStreaming = false;
   private currentStreamUrl?: string;
   private streamSwitcher?: StreamSwitcher | null;
+  private currentPlayStreamController?: AbortController;
   private readonly commandPrefix: string;
+  private healthSystem: HealthSystem;
 
   constructor(config: BotConfig) {
     this.config = config;
     this.commandPrefix = config.commandPrefix;
     this.client = new Client();
     this.streamer = new Streamer(this.client);
+
+    // Initialize health system with config
+    this.healthSystem = new HealthSystem(this.client, this.streamer, config.health);
+    this.setupHealthEventHandlers();
     this.setupEventHandlers();
+  }
+
+  private setupHealthEventHandlers(): void {
+    this.healthSystem.on("recovery-started", (actions) => {
+      botLogger.warn("Auto-recovery triggered", { actions });
+    });
+
+    this.healthSystem.on("recovery-completed", (results) => {
+      const successful = results.filter((r) => r.success).length;
+      botLogger.info("Auto-recovery completed", {
+        successful,
+        total: results.length,
+      });
+    });
+
+    this.healthSystem.on("stream-quality-alert", (alert) => {
+      botLogger.warn("Stream quality degraded", {
+        severity: alert.severity,
+        status: alert.status.status,
+        issues: alert.status.issues,
+      });
+    });
+
+    // Handle voice disconnection events
+    this.healthSystem.on("voice-disconnected", () => {
+      botLogger.warn("Voice connection lost - cleaning up stream");
+
+      // Stop current stream
+      if (this.currentController) {
+        this.currentController.abort();
+        delete this.currentController;
+      }
+
+      if (this.currentPlayStreamController) {
+        this.currentPlayStreamController.abort();
+        delete this.currentPlayStreamController;
+      }
+
+      // Clean up stream switcher
+      this.streamSwitcher?.cleanup();
+      this.streamSwitcher = null;
+
+      // Update streaming state
+      this.isStreaming = false;
+      delete this.currentStreamUrl;
+
+      // Update bot presence
+      this.updatePresence();
+
+      botLogger.info("Stream cleanup completed due to voice disconnection");
+    });
+
+    this.healthSystem.on("critical-error", (error) => {
+      botLogger.error("Critical system error detected", error);
+    });
   }
 
   private updatePresence(): void {
@@ -633,7 +757,7 @@ class DiscordStreamBot {
         return;
       }
 
-      await this.handleCommand(message);
+      await this.handleBotCommand(message);
     });
 
     this.client.on("error", (error) => {
@@ -644,20 +768,20 @@ class DiscordStreamBot {
     });
 
     // Handle graceful shutdown
-    process.on("SIGINT", () => {
+    process.on("SIGINT", async () => {
       botLogger.warn("Received SIGINT, shutting down gracefully...");
-      this.cleanup();
+      await this.cleanup();
       process.exit(0);
     });
 
-    process.on("SIGTERM", () => {
+    process.on("SIGTERM", async () => {
       botLogger.warn("Received SIGTERM, shutting down gracefully...");
-      this.cleanup();
+      await this.cleanup();
       process.exit(0);
     });
   }
 
-  private async handleCommand(message: any): Promise<void> {
+  private async handleBotCommand(message: any): Promise<void> {
     const args = message.content.slice(this.commandPrefix.length).trim().split(/ +/);
     const command = args.shift()?.toLowerCase();
 
@@ -798,9 +922,16 @@ class DiscordStreamBot {
             delete this.currentController;
           }
           this.isStreaming = false;
+          if (this.currentPlayStreamController) {
+            this.currentPlayStreamController.abort();
+            delete this.currentPlayStreamController;
+          }
           this.streamSwitcher?.cleanup();
           this.streamSwitcher = null;
           delete this.currentStreamUrl;
+
+          // Notify health system about stream stopping
+          this.healthSystem.onStreamStopped();
 
           // Give time for cleanup
           await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -820,6 +951,9 @@ class DiscordStreamBot {
         }
         this.isStreaming = false;
         delete this.currentStreamUrl;
+
+        // Notify health system about stream stopping
+        this.healthSystem.onStreamStopped();
 
         // Give time for the stream to properly close
         await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -887,8 +1021,23 @@ class DiscordStreamBot {
       }
 
       // Stop any existing stream
-      this.currentController?.abort();
+      // Abort any existing streams completely
+      if (this.currentController) {
+        this.currentController.abort();
+      }
+      if (this.currentPlayStreamController) {
+        this.currentPlayStreamController.abort();
+      }
+
+      // Clean up any existing stream switcher
+      this.streamSwitcher?.cleanup();
+
+      // Wait for Discord to properly reset after cleanup
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Create new controllers
       this.currentController = new AbortController();
+      this.currentPlayStreamController = new AbortController();
 
       this.currentStreamUrl = url;
       streamLogger.info("Preparing stream", { url });
@@ -896,10 +1045,20 @@ class DiscordStreamBot {
       // Create StreamSwitcher for seamless switching
       this.streamSwitcher = new StreamSwitcher(this.config);
 
+      // Register stderr listener for stream monitoring before starting FFmpeg
+      this.streamSwitcher.onStderr((line: string) => {
+        this.healthSystem.onFFmpegStderr(line);
+      });
+
       // Start initial stream
       await this.streamSwitcher.switchTo(url, this.currentController.signal);
 
       this.isStreaming = true;
+      this.currentStreamUrl = url;
+
+      // Notify health system about stream starting
+      this.healthSystem.onStreamStarted(url, channelId || undefined, this.currentController);
+
       this.updatePresence();
 
       const successMsg = `✅ Started streaming: \`${url}\` (${this.config.streamOpts.width}x${this.config.streamOpts.height}@${this.config.streamOpts.fps}fps, ${this.config.streamOpts.bitrateKbps}kbps)`;
@@ -907,31 +1066,73 @@ class DiscordStreamBot {
 
       logStreamStatus("starting", { url });
 
-      // Start streaming with the StreamSwitcher output
+      // Start streaming with the StreamSwitcher output using dedicated playStream controller
       try {
-        await playStream(
+        streamLogger.info("Starting Discord playStream", {
+          url,
+          hasExistingController: !!this.currentPlayStreamController,
+          voiceConnectionId: this.streamer.voiceConnection?.channelId,
+          isVoiceConnected: !!this.streamer.voiceConnection,
+        });
+
+        const playStreamPromise = playStream(
           this.streamSwitcher.getOutputStream(),
           this.streamer,
           {
             type: "go-live",
             readrateInitialBurst: 10, // For low latency
           },
-          this.currentController.signal
+          this.currentPlayStreamController.signal
         );
+
+        // Add timeout to detect hanging playStream but let it continue in background
+        const timeoutPromise = new Promise<void>((resolve) => {
+          setTimeout(() => {
+            streamLogger.warn("PlayStream taking longer than expected, continuing in background");
+            resolve();
+          }, 5000);
+        });
+
+        // Attach FFmpeg process to health system for monitoring
+        if (this.streamSwitcher?.currentCommand) {
+          this.healthSystem.onFFmpegProcess(this.streamSwitcher.currentCommand);
+        }
+
+        try {
+          await Promise.race([
+            playStreamPromise.then(() => {
+              streamLogger.info("Discord playStream started successfully", {
+                url,
+              });
+            }),
+            timeoutPromise,
+          ]);
+        } catch (playStreamError: any) {
+          streamLogger.warn("PlayStream had issues but continuing", {
+            error: playStreamError.message,
+          });
+          // Don't abort - let playStream continue in background
+        }
       } catch (playStreamError: any) {
+        streamLogger.error("PlayStream error details", {
+          error: playStreamError.message,
+          errorName: playStreamError.name,
+          url,
+          isAbortError: playStreamError.name === "AbortError",
+          voiceConnectionStatus: !!this.streamer.voiceConnection,
+        });
+
         // Handle playStream errors gracefully
         if (playStreamError.name !== "AbortError") {
-          throw playStreamError;
+          streamLogger.warn("PlayStream failed, but FFmpeg stream is still running");
+          // Don't try recovery - just log and continue
+          // The stream data is flowing, just Discord display failed
+          return;
+        } else {
+          streamLogger.info("PlayStream was aborted during stream switch");
+          return;
         }
-        streamLogger.info("PlayStream was aborted during stream switch");
-        this.isStreaming = false;
-        delete this.currentStreamUrl;
-        return;
       }
-
-      logStreamStatus("stopped", { url: this.currentStreamUrl });
-      this.isStreaming = false;
-      delete this.currentStreamUrl;
     } catch (error: any) {
       streamLogger.error("Stream command failed", {
         error: error.message,
@@ -973,14 +1174,29 @@ class DiscordStreamBot {
       return;
     }
 
+    // Stop both FFmpeg and Discord stream connections
     if (this.currentController) {
       this.currentController.abort();
-      delete this.currentController;
     }
+    if (this.currentPlayStreamController) {
+      this.currentPlayStreamController.abort();
+    }
+
+    // Clean up stream switcher
     this.streamSwitcher?.cleanup();
     this.streamSwitcher = null;
+
+    // Reset streaming state
     this.isStreaming = false;
+
+    // Notify health system about stream stopping
+    this.healthSystem.onStreamStopped();
+
     this.updatePresence();
+
+    // Clean up controller references
+    delete this.currentController;
+    delete this.currentPlayStreamController;
 
     await message.reply("🛑 Stream stopped successfully.");
     streamLogger.info("Stream stopped by user command", {
@@ -1024,12 +1240,17 @@ class DiscordStreamBot {
     const minutes = Math.floor((uptime % 3600) / 60);
     const seconds = Math.floor(uptime % 60);
 
+    // Get health system status
+    const healthStatus = this.healthSystem.getSystemStatus();
+    const metrics = this.healthSystem.getMetrics();
+
     let statusMessage = "📊 **Discord Stream Bot Status**\n";
     statusMessage += "```\n";
     statusMessage += `Bot User:     ${this.client.user?.tag}\n`;
     statusMessage += `Uptime:       ${hours}h ${minutes}m ${seconds}s\n`;
     statusMessage += `Voice:        ${isConnected ? "✅ Connected" : "❌ Disconnected"}\n`;
     statusMessage += `Streaming:    ${this.isStreaming ? "🔴 LIVE" : "⭕ Idle"}\n`;
+    statusMessage += `Health:       ${healthStatus.healthy ? "✅ Healthy" : healthStatus.ready ? "⚠️ Degraded" : "❌ Unhealthy"}\n`;
 
     if (isConnected && voiceConnection) {
       statusMessage += `Channel:      #${voiceConnection.channelId}\n`;
@@ -1037,6 +1258,12 @@ class DiscordStreamBot {
 
     if (this.isStreaming && this.currentStreamUrl) {
       statusMessage += `Stream URL:   ${this.currentStreamUrl.substring(0, 50)}${this.currentStreamUrl.length > 50 ? "..." : ""}\n`;
+
+      // Add stream quality info
+      const streamQuality = this.healthSystem.getStreamQuality();
+      if (streamQuality && streamQuality.status !== "excellent") {
+        statusMessage += `Stream Quality: ${streamQuality.status.toUpperCase()} (${streamQuality.score}/100)\n`;
+      }
     }
 
     statusMessage += "```\n";
@@ -1070,6 +1297,21 @@ class DiscordStreamBot {
         statusMessage += "```\n";
       }
     }
+
+    // Add health system endpoints info
+    statusMessage += "\n**🏥 Health Endpoints**\n";
+    statusMessage += `• \`/health\` - General health check\n`;
+    statusMessage += `• \`/health/live\` - Liveness probe\n`;
+    statusMessage += `• \`/health/ready\` - Readiness probe\n`;
+    statusMessage += `• \`/health/detailed\` - Detailed health info\n`;
+
+    // Add system health summary
+    statusMessage += "\n**🏥 System Health**\n```\n";
+    statusMessage += `Memory Usage: ${(metrics.memoryUsage.rss / 1024 / 1024).toFixed(2)}MB\n`;
+    statusMessage += `CPU Usage: ${metrics.cpuUsage.toFixed(1)}%\n`;
+    statusMessage += `Errors: ${metrics.errorCount}\n`;
+    statusMessage += `Auto-Recovery: ${healthStatus.components.recovery ? "✅ Ready" : "⚠️ Active"}\n`;
+    statusMessage += "```\n";
 
     statusMessage += `**🎮 Quick Commands**\n`;
     statusMessage += `• \`${this.commandPrefix}stream <url>\` - Start streaming (seamless switching)\n`;
@@ -1110,7 +1352,16 @@ class DiscordStreamBot {
     await message.reply(helpMessage);
   }
 
-  private cleanup(): void {
+  private async cleanup(): Promise<void> {
+    botLogger.info("Starting bot cleanup...");
+
+    try {
+      // Stop health system
+      await this.healthSystem.stop();
+      botLogger.info("Health system stopped");
+    } catch (error) {
+      botLogger.error("Error stopping health system", error);
+    }
     if (this.currentController) {
       this.currentController.abort();
       delete this.currentController;
@@ -1126,6 +1377,14 @@ class DiscordStreamBot {
   }
 
   public async start(): Promise<void> {
+    try {
+      // Start health system first
+      await this.healthSystem.start();
+      botLogger.info("Health system started successfully");
+    } catch (error) {
+      botLogger.error("Failed to start health system", error);
+      // Continue without health system if it fails
+    }
     try {
       botLogger.info("Starting Discord Stream Bot...");
       await this.client.login(this.config.token);

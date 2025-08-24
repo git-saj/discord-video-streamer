@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import type { HealthSystemConfig } from "./health/index.js";
 
 export interface StreamConfig {
   width?: number;
@@ -17,6 +18,7 @@ export interface BotConfig {
   streamOpts: StreamConfig;
   allowWebhooks: boolean;
   commandPrefix: string;
+  health?: HealthSystemConfig;
 }
 
 const DEFAULT_CONFIG: BotConfig = {
@@ -28,6 +30,34 @@ const DEFAULT_CONFIG: BotConfig = {
   },
   allowWebhooks: false,
   commandPrefix: "!",
+  health: {
+    enabled: true,
+    healthServer: {
+      port: parseInt(process.env.HEALTH_PORT || "8080", 10),
+      host: process.env.HEALTH_HOST || "0.0.0.0",
+      enableMetrics: process.env.ENABLE_METRICS !== "false",
+      enableRecoveryEndpoints: process.env.ENABLE_RECOVERY_ENDPOINTS === "true",
+      timeout: 10000,
+    },
+    autoRecovery: {
+      enabled: process.env.AUTO_RECOVERY !== "false",
+      maxRetriesPerHour: parseInt(process.env.MAX_RECOVERY_RETRIES || "10", 10),
+      criticalErrorThreshold: parseInt(process.env.CRITICAL_ERROR_THRESHOLD || "5", 10),
+      autoRestartThreshold: parseInt(process.env.AUTO_RESTART_THRESHOLD || "3", 10),
+      recoveryActions: {
+        reconnectDiscord: process.env.RECOVERY_RECONNECT_DISCORD !== "false",
+        reconnectVoice: process.env.RECOVERY_RECONNECT_VOICE !== "false",
+        restartStream: process.env.RECOVERY_RESTART_STREAM !== "false",
+        clearCache: process.env.RECOVERY_CLEAR_CACHE !== "false",
+        forceGarbageCollection: process.env.RECOVERY_FORCE_GC !== "false",
+      },
+    },
+    monitoring: {
+      healthCheckInterval: parseInt(process.env.HEALTH_CHECK_INTERVAL || "30000", 10),
+      metricsInterval: parseInt(process.env.METRICS_INTERVAL || "5000", 10),
+      enableStreamMonitoring: process.env.ENABLE_STREAM_MONITORING !== "false",
+    },
+  },
 };
 
 export async function loadConfig(configPath: string = "./config.json"): Promise<BotConfig> {
@@ -46,6 +76,26 @@ export async function loadConfig(configPath: string = "./config.json"): Promise<
       streamOpts: {
         ...DEFAULT_CONFIG.streamOpts,
         ...parsedConfig.streamOpts,
+      },
+      health: {
+        ...DEFAULT_CONFIG.health!,
+        ...parsedConfig.health,
+        healthServer: {
+          ...DEFAULT_CONFIG.health!.healthServer,
+          ...parsedConfig.health?.healthServer,
+        },
+        autoRecovery: {
+          ...DEFAULT_CONFIG.health!.autoRecovery,
+          ...parsedConfig.health?.autoRecovery,
+          recoveryActions: {
+            ...DEFAULT_CONFIG.health!.autoRecovery.recoveryActions,
+            ...parsedConfig.health?.autoRecovery?.recoveryActions,
+          },
+        },
+        monitoring: {
+          ...DEFAULT_CONFIG.health!.monitoring,
+          ...parsedConfig.health?.monitoring,
+        },
       },
     };
 
