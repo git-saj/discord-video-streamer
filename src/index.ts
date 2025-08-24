@@ -393,8 +393,16 @@ class StreamSwitcher {
       }
     );
 
-    // Basic input options
-    const inputOptions = ["-re", "-analyzeduration", "10000000", "-probesize", "10000000"];
+    // Basic input options - reduced buffering for lower latency
+    const inputOptions = [
+      "-re",
+      "-analyzeduration",
+      "2000000",
+      "-probesize",
+      "2000000",
+      "-fflags",
+      "+genpts",
+    ];
 
     // Remove hardware decoding to avoid filter incompatibilities
     // Only use NVENC for encoding, not decoding
@@ -427,6 +435,9 @@ class StreamSwitcher {
       .audioFrequency(48000)
       .audioBitrate("128k");
 
+    // Add audio filter for better sync and low latency
+    command.audioFilters("aresample=async=1");
+
     // Use CPU-based scaling for all cases to avoid filter issues
     command.size(`${streamSettings.width}x${streamSettings.height}`);
 
@@ -440,6 +451,12 @@ class StreamSwitcher {
       "0:a:0?",
       "-flush_packets",
       "1",
+      "-max_delay",
+      "0",
+      "-avoid_negative_ts",
+      "make_zero",
+      "-thread_queue_size",
+      "512",
       "-stats", // Enable progress statistics output
     ];
 
@@ -457,11 +474,15 @@ class StreamSwitcher {
         "-b_ref_mode",
         "0", // Disable B-frame reference for lower latency
         "-rc-lookahead",
-        "8", // Reduced lookahead for lower latency
+        "4", // Further reduced lookahead for lower latency
         "-gpu",
         "0", // Use first GPU
         "-strict_gop",
-        "1"
+        "1",
+        "-delay",
+        "0", // Minimize encoding delay
+        "-zerolatency",
+        "1" // Enable zero latency mode
       );
     } else {
       // Software encoding options
@@ -477,7 +498,11 @@ class StreamSwitcher {
         "-level",
         "3.1",
         "-strict_gop",
-        "1"
+        "1",
+        "-max_delay",
+        "0",
+        "-rc-lookahead",
+        "0" // No lookahead for software encoding
       );
     }
 
