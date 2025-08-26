@@ -101,7 +101,7 @@ dist
 .tern-port
 
 # Configuration files (keep example, ignore actual config)
-config.json
+config.jsonc
 
 # Build output
 build/

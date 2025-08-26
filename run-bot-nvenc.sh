@@ -19,24 +19,24 @@ echo ""
 # Check if Docker image exists
 if ! docker image inspect discord-stream-bot:latest >/dev/null 2>&1; then
     echo -e "${RED}❌ discord-stream-bot:latest image not found${NC}"
-    echo "Please build the NVENC-enabled image first:"
-    echo "  docker build -f Dockerfile.nvenc -t discord-stream-bot:nvenc ."
-    echo "  docker tag discord-stream-bot:nvenc discord-stream-bot:latest"
+    echo "Please build the image first:"
+    echo "  docker build -t discord-stream-bot:latest ."
     exit 1
 fi
 
-# Check if config.json exists
-if [[ ! -f "config.json" ]]; then
-    echo -e "${RED}❌ config.json not found${NC}"
-    echo "Please create a config.json file in the current directory"
+# Check if config.jsonc exists
+if [[ ! -f "config.jsonc" ]]; then
+    echo -e "${RED}❌ config.jsonc not found${NC}"
+    echo "Please create a config.jsonc file in the current directory"
+    echo "You can use config/template.jsonc as a starting point"
     exit 1
 fi
 
 # Check hardware acceleration setting
-hw_accel=$(grep -o '"hardwareAcceleration":\s*\(true\|false\)' config.json | grep -o '\(true\|false\)' || echo "false")
+hw_accel=$(grep -o '"name":\s*"nvenc"' config.jsonc >/dev/null 2>&1 && echo "true" || echo "false")
 if [[ "$hw_accel" != "true" ]]; then
-    echo -e "${YELLOW}⚠️  Hardware acceleration is disabled in config.json${NC}"
-    echo "Consider setting: \"hardwareAcceleration\": true"
+    echo -e "${YELLOW}⚠️  NVENC hardware acceleration is not enabled in config.jsonc${NC}"
+    echo "Consider setting encoder name to: \"nvenc\""
 fi
 
 echo -e "${BLUE}🔍 Finding NVIDIA library paths...${NC}"
@@ -75,7 +75,7 @@ DOCKER_ARGS=(
     "-d"
     "--name" "discord-stream-bot"
     "--restart" "unless-stopped"
-    "-v" "$(pwd)/config.json:/app/config.json:ro"
+    "-v" "$(pwd)/config.jsonc:/app/config.jsonc:ro"
     "-v" "$(pwd)/logs:/app/logs"
 )
 

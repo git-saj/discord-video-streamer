@@ -1,37 +1,21 @@
-import { loadConfig } from "./config.js";
-import { botLogger } from "./logger.js";
-import { DiscordStreamBot } from "./discord-stream-bot.js";
+import { argv } from "node:process";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { getConfig } from "./config.js";
+import { Bot } from "./bot.js";
 
-// Main execution
-async function main(): Promise<void> {
-  try {
-    botLogger.info("Discord Stream Bot starting up...", {
-      nodeVersion: process.version,
-      platform: process.platform,
-      architecture: process.arch,
-    });
+process.on("unhandledRejection", (reason: string, p: Promise<unknown>) => {
+  console.error("Unhandled Rejection at:", p, "reason:", reason);
+});
 
-    botLogger.info("Loading configuration...");
-    const config = await loadConfig();
+const configPath = fileURLToPath(
+  argv[2]
+    ? new URL(argv[2], pathToFileURL(process.cwd()))
+    : new URL("../config/default.jsonc", import.meta.url),
+);
+console.log(`Loading config from ${configPath}`);
+const config = await getConfig(configPath);
 
-    botLogger.info("Configuration loaded successfully", {
-      webhooksEnabled: config.allowWebhooks,
-      streamResolution: `${config.streamOpts.width}x${config.streamOpts.height}`,
-      streamFps: config.streamOpts.fps,
-      streamBitrate: `${config.streamOpts.bitrateKbps}kbps`,
-    });
-
-    botLogger.info("Initializing bot...");
-    const bot = new DiscordStreamBot(config);
-
-    await bot.start();
-  } catch (error) {
-    botLogger.error("Fatal error during startup", {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-    });
-    process.exit(1);
-  }
-}
-
-main();
+const bot = new Bot({
+  config,
+  modulesPath: new URL("./modules", import.meta.url),
+});

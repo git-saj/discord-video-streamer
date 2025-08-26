@@ -1,91 +1,48 @@
+import * as v from "valibot";
+import type { InferOutput } from "valibot";
 import { readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { parse as parseJsonc } from "jsonc-parser";
+import { LogLevel } from "./bot.js";
 
-export interface StreamConfig {
-  width?: number;
-  height?: number;
-  fps?: number;
-  bitrateKbps?: number;
-  maxBitrateKbps?: number;
-  hardwareAcceleration: boolean;
-  videoCodec: "H264" | "H265";
-  adaptiveSettings?: boolean;
-}
+const x26xPresetValidator = v.union([
+  v.literal("ultrafast"),
+  v.literal("superfast"),
+  v.literal("veryfast"),
+  v.literal("faster"),
+  v.literal("fast"),
+  v.literal("medium"),
+  v.literal("slow"),
+  v.literal("slower"),
+  v.literal("veryslow"),
+  v.literal("placebo"),
+]);
 
-export interface BotConfig {
-  token: string;
-  streamOpts: StreamConfig;
-  allowWebhooks: boolean;
-  commandPrefix: string;
-  healthProbe?: {
-    enabled: boolean;
-    port: number;
-    host: string;
-    timeout: number;
-  };
-}
+const validator = v.object({
+  token: v.string(),
+  prefix: v.string(),
+  allowed_id: v.array(v.string()),
+  bitrate: v.number(),
+  bitrate_max: v.number(),
+  height: v.number(),
+  encoder: v.variant("name", [
+    v.object({
+      name: v.literal("software"),
+      x264_preset: x26xPresetValidator,
+      x265_preset: x26xPresetValidator,
+    }),
+    v.object({
+      name: v.literal("nvenc"),
+      preset: v.picklist(["p1", "p2", "p3", "p4", "p5", "p6", "p7"]),
+    }),
+  ]),
+  log_level: v.optional(v.enum(LogLevel), LogLevel.NONE),
+});
 
-const DEFAULT_CONFIG: BotConfig = {
-  token: "",
-  streamOpts: {
-    hardwareAcceleration: false,
-    videoCodec: "H264",
-    adaptiveSettings: true,
-  },
-  allowWebhooks: false,
-  commandPrefix: "!",
-  healthProbe: {
-    enabled: process.env.HEALTH_PROBE_ENABLED !== "false",
-    port: parseInt(process.env.HEALTH_PORT || "8080", 10),
-    host: process.env.HEALTH_HOST || "0.0.0.0",
-    timeout: parseInt(process.env.HEALTH_TIMEOUT || "10000", 10),
-  },
-};
+export type BotConfig = InferOutput<typeof validator>;
 
-export async function loadConfig(configPath: string = "./config.json"): Promise<BotConfig> {
-  if (!existsSync(configPath)) {
-    throw new Error(`Config file not found at ${configPath}`);
-  }
-
-  try {
-    const configData = await readFile(configPath, "utf-8");
-    const parsedConfig = JSON.parse(configData) as Partial<BotConfig>;
-
-    // Merge with defaults and validate
-    const config: BotConfig = {
-      ...DEFAULT_CONFIG,
-      ...parsedConfig,
-      streamOpts: {
-        ...DEFAULT_CONFIG.streamOpts,
-        ...parsedConfig.streamOpts,
-      },
-      healthProbe: {
-        ...DEFAULT_CONFIG.healthProbe!,
-        ...parsedConfig.healthProbe,
-      },
-    };
-
-    // Validate required fields
-    if (!config.token) {
-      throw new Error("Token is required in config");
-    }
-
-    return config;
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      throw new Error(`Invalid JSON in config file: ${error.message}`);
-    }
-    throw error;
-  }
-}
-
-export function validateStreamUrl(url: string): boolean {
-  try {
-    const urlObj = new URL(url);
-    return (
-      urlObj.protocol === "http:" || urlObj.protocol === "https:" || urlObj.protocol === "rtmp:"
-    );
-  } catch {
-    return false;
-  }
+export async function getConfig(path: string) {
+  return v.parse(
+    validator,
+    parseJsonc((await readFile(path)).toString("utf-8")),
+  );
 }

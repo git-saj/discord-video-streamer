@@ -25,21 +25,33 @@ RUN npm install -g pnpm@latest && \
 COPY . .
 RUN pnpm build
 
-# Production stage with NVENC support
-FROM jrottenberg/ffmpeg:6.0-nvidia2204
+# Production stage with NVIDIA support and BtbN FFmpeg for ZMQ compatibility
+FROM nvidia/cuda:13.0.0-runtime-ubuntu24.04
 
-# Install Node.js and runtime dependencies
+# Install dependencies and BtbN FFmpeg build
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apt-get update && apt-get install -y \
     curl \
-    gnupg \
+    xz-utils \
     ca-certificates \
     libsodium23 \
     libzmq5 \
+    libzmq5-dev \
+    python3-zmq \
     dumb-init \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
+
+# Install FFmpeg from BtbN builds
+WORKDIR /tmp
+RUN curl -fsSL -o ffmpeg-master-latest-linux64-gpl.tar.xz \
+    https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz \
+    && tar -xf ffmpeg-master-latest-linux64-gpl.tar.xz \
+    && cp ffmpeg-master-latest-linux64-gpl/bin/ffmpeg /usr/local/bin/ \
+    && cp ffmpeg-master-latest-linux64-gpl/bin/ffprobe /usr/local/bin/ \
+    && chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe \
+    && rm -rf /tmp/ffmpeg-*
 
 # Create non-root user
 RUN groupadd -g 1001 -r nodejs && \
@@ -61,11 +73,32 @@ RUN pnpm config set ignore-scripts true && \
     rm -rf ~/.npm ~/.pnpm-store ~/.cache
 
 # Copy built application
-COPY --from=node-builder --chown=discordbot:nodejs /app/dist ./dist
+COPY --from=node-builder --chown=discordbot:nodejs /app/build ./build
 
-# Create logs directory
+# Copy config template directory
+COPY --chown=discordbot:nodejs config ./config
+
+# Create logs directory with proper permissions
 RUN mkdir -p logs && \
     chown discordbot:nodejs logs
+
+# Create startup script
+COPY <<EOF /start.sh
+#!/bin/bash
+echo "Starting Discord bot..."
+
+# Check if config.jsonc exists, if not use template
+if [[ ! -f "/app/config.jsonc" && -f "/app/config/template.jsonc" ]]; then
+    echo "No config.jsonc found, please mount your config file to /app/config.jsonc"
+    echo "Using template config for reference (bot will likely fail without proper config)"
+    cp /app/config/template.jsonc /app/config.jsonc
+fi
+
+# Start the bot with config.jsonc as argument
+exec node build/index.js /app/config.jsonc
+EOF
+
+RUN chmod +x /start.sh
 
 # Set NVIDIA environment variables
 ENV NVIDIA_VISIBLE_DEVICES=all
@@ -85,5 +118,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
 # Use dumb-init for signal handling
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the bot
-CMD ["node", "dist/index.js"]
+# Start bot
+CMD ["/start.sh"]
