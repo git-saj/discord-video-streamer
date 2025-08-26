@@ -20,4 +20,16 @@
    *   "preset": "p4" (or "p1", "p2", "p3", "p5", "p6", "p7")
    * }
    */
+  "logging": {
+    "level": "info",
+    "enableConsole": true,
+    "enableFile": true,
+    "logDir": "logs",
+  },
+  /* Logging configuration
+   * - level: "error", "warn", "info", or "debug"
+   * - enableConsole: whether to log to console
+   * - enableFile: whether to log to files
+   * - logDir: directory for log files
+   */
 }

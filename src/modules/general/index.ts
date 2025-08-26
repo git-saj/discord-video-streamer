@@ -233,7 +233,7 @@ function getCommandExamples(commandName: string, prefix: string): string[] {
     play: [
       `${prefix}play https://www.youtube.com/watch?v=dQw4w9WgXcQ`,
       `${prefix}play video.mp4 --now`,
-      `${prefix}play https://stream.url --channel-id 1234567890 --livestream`,
+      `${prefix}play https://stream.url --room 1234567890/9876543210 --livestream`,
       `${prefix}play movie.mkv --copy --height 720`,
     ],
     "yt-dlp": [

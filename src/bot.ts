@@ -5,19 +5,12 @@ import { Client, type Message } from "discord.js-selfbot-v13";
 import { glob } from "glob";
 import type { BotCommand, Module } from "./modules/index.js";
 import type { BotConfig } from "./config.js";
+import { getLogger } from "./utils/logger.js";
 
 export type BotSettings = {
   config: BotConfig;
   modulesPath: string | URL;
 };
-
-export enum LogLevel {
-  NONE = 0,
-  ERROR = 1,
-  WARNING = 2,
-  INFO = 3,
-  DEBUG = 4,
-}
 
 export class Bot extends EventEmitter {
   private _config: BotConfig;
@@ -27,15 +20,14 @@ export class Bot extends EventEmitter {
   private _allCommandsByName = new Map<string, [BotCommand, Module]>();
   private _allCommandsByModule = new Map<string, BotCommand[]>();
 
-  public logLevel;
   public prefix;
+  private logger = getLogger();
 
   constructor({ config, modulesPath }: BotSettings) {
     super();
     this._config = config;
 
     this.prefix = config.prefix;
-    this.logLevel = config.log_level;
 
     (async () => {
       const modulesFile = (
@@ -50,15 +42,22 @@ export class Bot extends EventEmitter {
         ),
       );
       for (const module of modules) {
-        console.log(`Registering module ${module.name}`);
+        this.logger.info(`Registering module ${module.name}`, {
+          module: module.name,
+        });
         const commands = module.register(this);
         this._allCommandsByModule.set(module.name, commands);
         for (const command of commands) {
           const commandName = command.parser.name();
           const existingCommand = this._allCommandsByName.get(commandName);
           if (existingCommand) {
-            console.log(
+            this.logger.warn(
               `Command "${commandName}" already exists in module "${existingCommand[1].name}"`,
+              {
+                command: commandName,
+                existingModule: existingCommand[1].name,
+                newModule: module.name,
+              },
             );
             continue;
           }
@@ -67,7 +66,7 @@ export class Bot extends EventEmitter {
       }
       this._client.on("messageCreate", this._handleMessage.bind(this));
       this.client.on("ready", () => {
-        console.log(`--- ${this._client.user?.tag} is ready ---`);
+        this.logger.info("Bot is ready", { userTag: this._client.user?.tag });
         this._initialized = true;
         this.emit("ready");
       });
@@ -86,47 +85,40 @@ export class Bot extends EventEmitter {
     }
   }
 
-  public async log(
-    request: Message,
-    level: LogLevel,
-    ...args: Parameters<Message["channel"]["send"]>
-  ) {
-    if (level === LogLevel.NONE)
-      throw new Error("Can't use NONE as log level for log()");
-    if (this.logLevel < level) return;
-    try {
-      const reply = await request.channel.send(...args);
-      switch (level) {
-        case LogLevel.ERROR:
-          await reply.react("🟥");
-          break;
-        case LogLevel.WARNING:
-          await reply.react("🟨");
-          break;
-        case LogLevel.INFO:
-          await reply.react("🟩");
-          break;
-        case LogLevel.DEBUG:
-          await reply.react("🟦");
-          break;
-      }
-    } catch {}
-  }
-
   public async executeCommand(message: Message, input: string) {
     const splitted = parseArgsStringToArgv(input);
     const command = splitted[0];
-    const program = this._allCommandsByName.get(command)?.[0];
-    if (!program) {
+    const commandEntry = this._allCommandsByName.get(command);
+    if (!commandEntry) {
+      this.logger.warn(
+        "Invalid command attempted",
+        this.logger.createMessageContext(message, { command }),
+      );
       message.reply(`Invalid command \`${command}\``);
       return;
     }
+    const [program, module] = commandEntry;
     const { parser, handler } = program;
     try {
       const result = parser.parse(splitted.slice(1), { from: "user" });
+      this.logger.logCommand(
+        message,
+        command,
+        result.processedArgs,
+        result.opts(),
+        module.name,
+      );
       await handler(message, result.processedArgs, result.opts());
     } catch (e: unknown) {
       if (e instanceof CommanderError) {
+        this.logger.warn(
+          "Command parsing error",
+          this.logger.createMessageContext(message, {
+            command,
+            error: e.message,
+            module: module.name,
+          }),
+        );
         let reply = "";
         reply += "```\n";
         reply += `${e.message}\n`;
@@ -135,6 +127,14 @@ export class Bot extends EventEmitter {
         reply += `${parser.helpInformation()}\n`;
         reply += "```\n";
         message.reply(reply);
+      } else {
+        this.logger.logError(
+          e instanceof Error ? e : String(e),
+          this.logger.createMessageContext(message, {
+            command,
+            module: module.name,
+          }),
+        );
       }
     }
   }

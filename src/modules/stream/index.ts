@@ -9,7 +9,7 @@ import {
 import * as Ingestor from "./input/ffmpegIngest.js";
 import * as ytdlp from "./input/yt-dlp.js";
 import { createCommand } from "../index.js";
-import { LogLevel } from "../../bot.js";
+import { getLogger } from "../../utils/logger.js";
 import { MessageFlags, StageChannel } from "discord.js-selfbot-v13";
 
 import type { Module } from "../index.js";
@@ -24,19 +24,10 @@ async function joinRoomIfNeeded(
   streamer: Streamer,
   message: Message,
   optionalRoom?: string,
-  channelId?: string,
 ) {
   let guildId: string;
   let targetChannelId: string;
-  if (channelId) {
-    // Use specific channel ID provided
-    guildId = message.guildId ?? "";
-    if (!guildId) {
-      message.reply("Cannot determine guild ID");
-      return false;
-    }
-    targetChannelId = channelId;
-  } else if (optionalRoom) {
+  if (optionalRoom) {
     [guildId, targetChannelId] = optionalRoom.split("/");
     if (!guildId) {
       message.reply("Guild ID is empty");
@@ -73,10 +64,10 @@ async function forceCleanupSockets() {
     await execAsync("pkill -f ffmpeg || true").catch(() => {});
     // Wait a bit more for system cleanup
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    console.log("Performed aggressive socket cleanup");
+    getLogger().info("Performed aggressive socket cleanup");
   } catch (error) {
     const err = error as Error;
-    console.warn("Socket cleanup warning:", err.message);
+    getLogger().warn("Socket cleanup warning", { error: err.message });
   }
 }
 
@@ -126,8 +117,9 @@ class Playlist {
               err.message?.includes("Address already in use") &&
               retries > 1
             ) {
-              console.log(
+              getLogger().warn(
                 `Socket conflict detected, performing aggressive cleanup... (${retries - 1} retries left)`,
+                { retries: retries - 1 },
               );
               await forceCleanupSockets();
               await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -194,14 +186,14 @@ class Playlist {
 
 function errorHandler(err: Error, bot: Bot, message: Message) {
   if (err.name === "AbortError") return;
-  bot.log(
-    message,
-    LogLevel.ERROR,
-    `Oops, something bad happened
+  getLogger().logError(
+    "Stream error occurred",
+    getLogger().createMessageContext(message, { error: err.message }),
+  );
+  message.reply(`Oops, something bad happened
 \`\`\`
 ${err.message}
-\`\`\``,
-  );
+\`\`\``);
 }
 
 function addCommonStreamOptions<
@@ -213,7 +205,6 @@ function addCommonStreamOptions<
       "--room <id>",
       "The room ID, specified as <guildId>/<channelId>. If not specified, use the current room of the caller",
     )
-    .option("--channel-id <id>", "Join a specific voice channel by ID")
     .option("--preview", "Enable stream preview");
 }
 
@@ -308,22 +299,19 @@ export default {
             ),
         ),
         async (message, args, opts) => {
-          if (
-            !(await joinRoomIfNeeded(
-              streamer,
-              message,
-              opts.room,
-              opts.channelId,
-            ))
-          )
-            return;
+          if (!(await joinRoomIfNeeded(streamer, message, opts.room))) return;
           let added = 0;
           for (const url of args[0]) {
             await playlist.queue(
               {
                 info: url,
                 stream: async (abort) => {
-                  bot.log(message, LogLevel.INFO, {
+                  getLogger().logStream(
+                    "Starting playback",
+                    { url },
+                    getLogger().createMessageContext(message),
+                  );
+                  message.channel.send({
                     content: `Now playing \`${url}\``,
                     flags: MessageFlags.FLAGS.SUPPRESS_NOTIFICATIONS,
                   });
@@ -339,14 +327,15 @@ export default {
                     );
 
                     command.on("stderr", (line) => {
-                      console.log(line);
+                      getLogger().debug("FFmpeg stderr", { line, url });
                       // Check for socket binding errors
                       if (
                         line.includes("Could not bind ZMQ socket") &&
                         line.includes("Address already in use")
                       ) {
-                        console.error(
+                        getLogger().error(
                           "ZMQ socket binding failed - port conflict detected",
+                          { url, line },
                         );
                       }
                     });
@@ -368,10 +357,10 @@ export default {
                       error.message?.includes("Address already in use") ||
                       error.message?.includes("Could not bind ZMQ socket")
                     ) {
-                      console.error(
-                        `Socket conflict error for ${url}:`,
-                        error.message,
-                      );
+                      getLogger().error(`Socket conflict error for ${url}`, {
+                        url,
+                        error: error.message,
+                      });
                       throw new Error(
                         `Socket conflict - please try again: ${error.message}`,
                       );
@@ -408,19 +397,16 @@ export default {
             ),
         ),
         async (message, args, opts) => {
-          if (
-            !(await joinRoomIfNeeded(
-              streamer,
-              message,
-              opts.room,
-              opts.channelId,
-            ))
-          )
-            return;
+          if (!(await joinRoomIfNeeded(streamer, message, opts.room))) return;
           await playlist.queue({
             info: "OBS stream",
             stream: async (abort) => {
-              bot.log(message, LogLevel.INFO, {
+              getLogger().logStream(
+                "Starting OBS playback",
+                {},
+                getLogger().createMessageContext(message),
+              );
+              message.channel.send({
                 content: "Now playing OBS stream",
                 flags: MessageFlags.FLAGS.SUPPRESS_NOTIFICATIONS,
               });
@@ -436,24 +422,24 @@ export default {
                 );
 
                 command.ffmpeg.on("stderr", (line) => {
-                  console.log(line);
+                  getLogger().debug("OBS FFmpeg stderr", { line });
                   // Check for socket binding errors in OBS streams
                   if (
                     line.includes("Could not bind ZMQ socket") &&
                     line.includes("Address already in use")
                   ) {
-                    console.error(
+                    getLogger().error(
                       "ZMQ socket binding failed in OBS stream - port conflict detected",
+                      { line },
                     );
                   }
                 });
 
                 message.reply(`Please connect your OBS to \`${host}\``);
                 output.once("data", () => {
-                  bot.log(
-                    message,
-                    LogLevel.DEBUG,
+                  getLogger().debug(
                     "Media stream found. Starting playback...",
+                    getLogger().createMessageContext(message),
                   );
                 });
                 const promise = playStream(
@@ -512,20 +498,17 @@ export default {
             message.reply(reply);
             return;
           }
-          if (
-            !(await joinRoomIfNeeded(
-              streamer,
-              message,
-              opts.room,
-              opts.channelId,
-            ))
-          )
-            return;
+          if (!(await joinRoomIfNeeded(streamer, message, opts.room))) return;
 
           await playlist.queue({
             info: args[0],
             stream: async (abort) => {
-              bot.log(message, LogLevel.INFO, {
+              getLogger().logStream(
+                "Starting yt-dlp playback",
+                { url: args[0] },
+                getLogger().createMessageContext(message),
+              );
+              message.channel.send({
                 content: `Now playing \`${args[0]}\``,
                 flags: MessageFlags.FLAGS.SUPPRESS_NOTIFICATIONS,
               });
@@ -540,14 +523,18 @@ export default {
                   abort.signal,
                 );
                 command.ffmpeg.on("stderr", (line) => {
-                  console.log(line);
+                  getLogger().debug("yt-dlp FFmpeg stderr", {
+                    line,
+                    url: args[0],
+                  });
                   // Check for socket binding errors in yt-dlp streams
                   if (
                     line.includes("Could not bind ZMQ socket") &&
                     line.includes("Address already in use")
                   ) {
-                    console.error(
+                    getLogger().error(
                       "ZMQ socket binding failed in yt-dlp stream - port conflict detected",
+                      { line, url: args[0] },
                     );
                   }
                 });

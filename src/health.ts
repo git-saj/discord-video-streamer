@@ -5,6 +5,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import type { Bot } from "./bot.js";
+import { getLogger } from "./utils/logger.js";
 
 export interface HealthServerConfig {
   port: number;
@@ -15,6 +16,7 @@ export class HealthServer {
   private server: Server;
   private bot: Bot;
   private config: HealthServerConfig;
+  private logger = getLogger();
 
   constructor(bot: Bot, config: HealthServerConfig = { port: 8080 }) {
     this.bot = bot;
@@ -52,7 +54,7 @@ export class HealthServer {
           this.sendResponse(res, 404, { error: "Not found" });
       }
     } catch (error) {
-      console.error("Health check error:", error);
+      this.logger.logError("Health check error", { error });
       this.sendResponse(res, 500, { error: "Internal server error" });
     }
   }
@@ -209,14 +211,15 @@ export class HealthServer {
   public start(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.server.listen(this.config.port, this.config.host, () => {
-        console.log(
+        this.logger.info(
           `Health server listening on ${this.config.host}:${this.config.port}`,
+          { host: this.config.host, port: this.config.port },
         );
         resolve();
       });
 
       this.server.on("error", (error) => {
-        console.error("Health server error:", error);
+        this.logger.logError("Health server error", { error });
         reject(error);
       });
     });
@@ -225,7 +228,7 @@ export class HealthServer {
   public stop(): Promise<void> {
     return new Promise((resolve) => {
       this.server.close(() => {
-        console.log("Health server stopped");
+        this.logger.info("Health server stopped");
         resolve();
       });
     });
