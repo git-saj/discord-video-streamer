@@ -23,7 +23,7 @@ export class Bot extends EventEmitter {
   private _config: BotConfig;
   private _client = new Client();
   private _initialized = false;
-  private _allowedId;
+
   private _allCommandsByName = new Map<string, [BotCommand, Module]>();
   private _allCommandsByModule = new Map<string, BotCommand[]>();
 
@@ -33,7 +33,7 @@ export class Bot extends EventEmitter {
   constructor({ config, modulesPath }: BotSettings) {
     super();
     this._config = config;
-    this._allowedId = new Set(config.allowed_id);
+
     this.prefix = config.prefix;
     this.logLevel = config.log_level;
 
@@ -76,10 +76,6 @@ export class Bot extends EventEmitter {
   }
 
   private async _handleMessage(message: Message) {
-    if (message.author.bot) return;
-
-    if (!this._allowedId.has(message.author.id)) return;
-
     if (!message.content) return;
 
     if (message.content.startsWith(this.prefix)) {
@@ -157,10 +153,6 @@ export class Bot extends EventEmitter {
 
   public get allCommands() {
     return this._allCommandsByName;
-  }
-
-  public get allowedId() {
-    return this._allowedId;
   }
 
   public get config() {

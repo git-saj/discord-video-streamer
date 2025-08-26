@@ -117,7 +117,6 @@ export default {
                 },
               ],
             ]),
-            new Set([message.author.id]),
           );
         },
       ),

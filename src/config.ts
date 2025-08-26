@@ -20,7 +20,7 @@ const x26xPresetValidator = v.union([
 const validator = v.object({
   token: v.string(),
   prefix: v.string(),
-  allowed_id: v.array(v.string()),
+  allowed_id: v.optional(v.array(v.string())),
   bitrate: v.number(),
   bitrate_max: v.number(),
   height: v.number(),

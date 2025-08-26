@@ -51,7 +51,7 @@ export function ingestRtmp(port?: number, cancelSignal?: AbortSignal) {
     .inputFormat("flv")
     .addInputOption("-listen", "1", "-tcp_nodelay", "1", "-rtmp_buffer", "20")
     .output(output)
-    .outputFormat("matroska");
+    .outputFormat("nut");
 
   command.addOutputOption("-map 0:v");
   command.videoCodec("copy");
@@ -95,7 +95,7 @@ export function ingestSrt(port?: number, cancelSignal?: AbortSignal) {
       "0",
     )
     .output(output)
-    .outputFormat("matroska");
+    .outputFormat("nut");
 
   command.addOutputOption("-map 0:v");
   command.videoCodec("copy");
@@ -133,7 +133,7 @@ export function ingestRist(port?: number, cancelSignal?: AbortSignal) {
     .inputFormat("mpegts")
     .addInputOption("-buffer_size", "20", "-scan_all_pmts", "0")
     .output(output)
-    .outputFormat("matroska");
+    .outputFormat("nut");
 
   command.addOutputOption("-map 0:v");
   command.videoCodec("copy");

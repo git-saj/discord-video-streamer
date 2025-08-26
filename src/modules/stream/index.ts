@@ -15,21 +15,34 @@ import { MessageFlags, StageChannel } from "discord.js-selfbot-v13";
 import type { Module } from "../index.js";
 import type { Message } from "discord.js-selfbot-v13";
 import type { Bot } from "../../bot.js";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
+
+const execAsync = promisify(exec);
 
 async function joinRoomIfNeeded(
   streamer: Streamer,
   message: Message,
   optionalRoom?: string,
+  channelId?: string,
 ) {
   let guildId: string;
-  let channelId: string;
-  if (optionalRoom) {
-    [guildId, channelId] = optionalRoom.split("/");
+  let targetChannelId: string;
+  if (channelId) {
+    // Use specific channel ID provided
+    guildId = message.guildId ?? "";
+    if (!guildId) {
+      message.reply("Cannot determine guild ID");
+      return false;
+    }
+    targetChannelId = channelId;
+  } else if (optionalRoom) {
+    [guildId, targetChannelId] = optionalRoom.split("/");
     if (!guildId) {
       message.reply("Guild ID is empty");
       return false;
     }
-    if (!channelId) {
+    if (!targetChannelId) {
       message.reply("Channel ID is empty");
       return false;
     }
@@ -40,18 +53,31 @@ async function joinRoomIfNeeded(
       message.reply("Please join a voice channel first!");
       return false;
     }
-    channelId = channelIdNullable;
+    targetChannelId = channelIdNullable;
   }
   if (
     !streamer.voiceConnection ||
     streamer.voiceConnection.guildId !== guildId ||
-    streamer.voiceConnection.channelId !== channelId
+    streamer.voiceConnection.channelId !== targetChannelId
   )
-    await streamer.joinVoice(guildId, channelId);
+    await streamer.joinVoice(guildId, targetChannelId);
 
   if (streamer.client.user?.voice?.channel instanceof StageChannel)
     await streamer.client.user.voice.setSuppressed(false);
   return true;
+}
+
+async function forceCleanupSockets() {
+  try {
+    // Kill any lingering ffmpeg processes that might be holding the socket
+    await execAsync("pkill -f ffmpeg || true").catch(() => {});
+    // Wait a bit more for system cleanup
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    console.log("Performed aggressive socket cleanup");
+  } catch (error) {
+    const err = error as Error;
+    console.warn("Socket cleanup warning:", err.message);
+  }
 }
 
 type StreamItem = {
@@ -66,6 +92,7 @@ type QueueItem = {
 class Playlist {
   private _items: QueueItem[] = [];
   private _current?: StreamItem;
+  private _currentInfo?: string;
   private _abort?: AbortController;
   private _processing = false;
 
@@ -76,31 +103,92 @@ class Playlist {
     while (next) {
       try {
         this._abort?.abort();
+        // Wait for previous stream resources to cleanup before starting new one
+        if (this._abort) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
         this._abort = new AbortController();
-        this._current = await next.stream(this._abort);
+        this._currentInfo = next.info;
+
+        // Retry stream creation if socket conflicts occur
+        let retries = 3;
+        let streamResult: StreamItem | undefined;
+        while (retries > 0) {
+          try {
+            if (!this._abort) {
+              throw new Error("Abort controller not initialized");
+            }
+            streamResult = await next.stream(this._abort);
+            break;
+          } catch (error) {
+            const err = error as Error;
+            if (
+              err.message?.includes("Address already in use") &&
+              retries > 1
+            ) {
+              console.log(
+                `Socket conflict detected, performing aggressive cleanup... (${retries - 1} retries left)`,
+              );
+              await forceCleanupSockets();
+              await new Promise((resolve) => setTimeout(resolve, 2000));
+              retries--;
+            } else {
+              throw error;
+            }
+          }
+        }
+
+        if (!streamResult) {
+          throw new Error("Failed to create stream after retries");
+        }
+
+        this._current = streamResult;
         await this._current.promise;
       } catch {}
       next = this._items.shift();
     }
     this._processing = false;
     this._current = undefined;
+    this._currentInfo = undefined;
   }
-  queue(queueItem: QueueItem) {
-    this._items.push(queueItem);
+  async queue(queueItem: QueueItem, playNow = false) {
+    if (playNow) {
+      // Stop current item and add to front of queue
+      this._abort?.abort();
+      // Wait for sockets (like ZMQ) to properly close before continuing
+      if (this._abort) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+      this._items.unshift(queueItem);
+    } else {
+      this._items.push(queueItem);
+    }
     if (!this._processing) this.processQueue();
   }
-  skip() {
+  async skip() {
     this._abort?.abort();
+    // Perform aggressive cleanup to ensure sockets are freed
+    await forceCleanupSockets();
+    await new Promise((resolve) => setTimeout(resolve, 2000));
   }
-  stop() {
+  async stop() {
     this._items = [];
-    this.skip();
+    await this.skip();
   }
   get items() {
     return this._items;
   }
   get current() {
     return this._current;
+  }
+  get processing() {
+    return this._processing;
+  }
+  get hasActiveStream() {
+    return this._processing && this._current !== undefined;
+  }
+  get currentInfo() {
+    return this._currentInfo;
   }
 }
 
@@ -125,6 +213,7 @@ function addCommonStreamOptions<
       "--room <id>",
       "The room ID, specified as <guildId>/<channelId>. If not specified, use the current room of the caller",
     )
+    .option("--channel-id <id>", "Join a specific voice channel by ID")
     .option("--preview", "Enable stream preview");
 }
 
@@ -135,6 +224,47 @@ export default {
       forceChacha20Encryption: true,
     });
     const playlist = new Playlist();
+
+    // Expose streaming state for health checks
+    const botWithStreamingState = bot as typeof bot & {
+      streamingState: {
+        isStreaming: boolean;
+        isProcessing: boolean;
+        queueLength: number;
+        currentStream: string | null;
+        voiceConnection: {
+          guildId: string | null;
+          channelId: string;
+          ready: boolean;
+        } | null;
+      };
+    };
+    botWithStreamingState.streamingState = {
+      get isStreaming() {
+        return playlist.hasActiveStream;
+      },
+      get isProcessing() {
+        return playlist.processing;
+      },
+      get queueLength() {
+        return playlist.items.length;
+      },
+      get currentStream() {
+        return playlist.currentInfo || null;
+      },
+      get voiceConnection() {
+        return streamer.voiceConnection
+          ? {
+              guildId: streamer.voiceConnection.guildId,
+              channelId: streamer.voiceConnection.channelId,
+              ready:
+                typeof streamer.voiceConnection.ready === "function"
+                  ? true
+                  : streamer.voiceConnection.ready,
+            }
+          : null;
+      },
+    };
     let encoder:
       | ReturnType<typeof Encoders.software>
       | ReturnType<typeof Encoders.nvenc>;
@@ -168,6 +298,8 @@ export default {
             .argument("<url...>", "The urls to play")
             .option("--copy", "Copy the stream directly instead of re-encoding")
             .option("--livestream", "Specify if the stream is a livestream")
+
+            .option("--now", "Play immediately, skipping any current playback")
             .option(
               "--height <height>",
               "Transcode the video to this height. Specify -1 for auto height",
@@ -176,51 +308,87 @@ export default {
             ),
         ),
         async (message, args, opts) => {
-          if (!(await joinRoomIfNeeded(streamer, message, opts.room))) return;
+          if (
+            !(await joinRoomIfNeeded(
+              streamer,
+              message,
+              opts.room,
+              opts.channelId,
+            ))
+          )
+            return;
           let added = 0;
           for (const url of args[0]) {
-            playlist.queue({
-              info: url,
-              stream: async (abort) => {
-                bot.log(message, LogLevel.INFO, {
-                  content: `Now playing \`${url}\``,
-                  flags: MessageFlags.FLAGS.SUPPRESS_NOTIFICATIONS,
-                });
-                try {
-                  const { command, output, controller } = prepareStream(
-                    url,
-                    {
-                      noTranscoding: !!opts.copy,
-                      ...encoderSettings,
-                      height: opts.height === -1 ? undefined : opts.height,
-                    },
-                    abort.signal,
-                  );
+            await playlist.queue(
+              {
+                info: url,
+                stream: async (abort) => {
+                  bot.log(message, LogLevel.INFO, {
+                    content: `Now playing \`${url}\``,
+                    flags: MessageFlags.FLAGS.SUPPRESS_NOTIFICATIONS,
+                  });
+                  try {
+                    const { command, output, controller } = prepareStream(
+                      url,
+                      {
+                        noTranscoding: !!opts.copy,
+                        ...encoderSettings,
+                        height: opts.height === -1 ? undefined : opts.height,
+                      },
+                      abort.signal,
+                    );
 
-                  command.on("stderr", (line) => console.log(line));
+                    command.on("stderr", (line) => {
+                      console.log(line);
+                      // Check for socket binding errors
+                      if (
+                        line.includes("Could not bind ZMQ socket") &&
+                        line.includes("Address already in use")
+                      ) {
+                        console.error(
+                          "ZMQ socket binding failed - port conflict detected",
+                        );
+                      }
+                    });
 
-                  const promise = playStream(
-                    output,
-                    streamer,
-                    {
-                      readrateInitialBurst: opts.livestream ? 10 : undefined,
-                      streamPreview: opts.preview,
-                    },
-                    abort.signal,
-                  );
+                    const promise = playStream(
+                      output,
+                      streamer,
+                      {
+                        readrateInitialBurst: opts.livestream ? 10 : undefined,
+                        streamPreview: opts.preview,
+                      },
+                      abort.signal,
+                    );
 
-                  return { controller, promise };
-                } catch (e) {
-                  errorHandler(e as Error, bot, message);
-                  throw e;
-                }
+                    return { controller, promise };
+                  } catch (e) {
+                    const error = e as Error;
+                    if (
+                      error.message?.includes("Address already in use") ||
+                      error.message?.includes("Could not bind ZMQ socket")
+                    ) {
+                      console.error(
+                        `Socket conflict error for ${url}:`,
+                        error.message,
+                      );
+                      throw new Error(
+                        `Socket conflict - please try again: ${error.message}`,
+                      );
+                    }
+                    errorHandler(error, bot, message);
+                    throw e;
+                  }
+                },
               },
-            });
+              opts.now,
+            );
             added++;
           }
-          message.reply(
-            `Added ${added} video${added === 1 ? "" : "s"} to the queue`,
-          );
+          const queueMessage = opts.now
+            ? `Playing ${added} video${added === 1 ? "" : "s"} now`
+            : `Added ${added} video${added === 1 ? "" : "s"} to the queue`;
+          message.reply(queueMessage);
         },
       ),
 
@@ -240,8 +408,16 @@ export default {
             ),
         ),
         async (message, args, opts) => {
-          if (!(await joinRoomIfNeeded(streamer, message, opts.room))) return;
-          playlist.queue({
+          if (
+            !(await joinRoomIfNeeded(
+              streamer,
+              message,
+              opts.room,
+              opts.channelId,
+            ))
+          )
+            return;
+          await playlist.queue({
             info: "OBS stream",
             stream: async (abort) => {
               bot.log(message, LogLevel.INFO, {
@@ -259,7 +435,18 @@ export default {
                   abort.signal,
                 );
 
-                command.ffmpeg.on("stderr", (line) => console.log(line));
+                command.ffmpeg.on("stderr", (line) => {
+                  console.log(line);
+                  // Check for socket binding errors in OBS streams
+                  if (
+                    line.includes("Could not bind ZMQ socket") &&
+                    line.includes("Address already in use")
+                  ) {
+                    console.error(
+                      "ZMQ socket binding failed in OBS stream - port conflict detected",
+                    );
+                  }
+                });
 
                 message.reply(`Please connect your OBS to \`${host}\``);
                 output.once("data", () => {
@@ -325,9 +512,17 @@ export default {
             message.reply(reply);
             return;
           }
-          if (!(await joinRoomIfNeeded(streamer, message, opts.room))) return;
+          if (
+            !(await joinRoomIfNeeded(
+              streamer,
+              message,
+              opts.room,
+              opts.channelId,
+            ))
+          )
+            return;
 
-          playlist.queue({
+          await playlist.queue({
             info: args[0],
             stream: async (abort) => {
               bot.log(message, LogLevel.INFO, {
@@ -344,7 +539,18 @@ export default {
                   },
                   abort.signal,
                 );
-                command.ffmpeg.on("stderr", (line) => console.log(line));
+                command.ffmpeg.on("stderr", (line) => {
+                  console.log(line);
+                  // Check for socket binding errors in yt-dlp streams
+                  if (
+                    line.includes("Could not bind ZMQ socket") &&
+                    line.includes("Address already in use")
+                  ) {
+                    console.error(
+                      "ZMQ socket binding failed in yt-dlp stream - port conflict detected",
+                    );
+                  }
+                });
                 const promise = playStream(
                   output,
                   streamer,
@@ -406,16 +612,16 @@ export default {
           return message.reply(content);
         },
       ),
-      createCommand(new Command("skip"), () => {
-        playlist.skip();
+      createCommand(new Command("skip"), async () => {
+        await playlist.skip();
       }),
 
-      createCommand(new Command("stop"), () => {
-        playlist.stop();
+      createCommand(new Command("stop"), async () => {
+        await playlist.stop();
       }),
 
-      createCommand(new Command("disconnect"), () => {
-        playlist.stop();
+      createCommand(new Command("disconnect"), async () => {
+        await playlist.stop();
         streamer.leaveVoice();
       }),
     ];
