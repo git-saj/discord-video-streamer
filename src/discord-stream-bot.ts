@@ -276,6 +276,12 @@ export class DiscordStreamBot {
           });
           await message.reply("⚠️ Seamless switch failed, restarting stream...");
 
+          // Force reset the voice connection for parameter changes
+          if (this.streamer.voiceConnection) {
+            this.streamer.leaveVoice();
+            await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait for disconnection
+          }
+
           // Fall back to full restart
           if (this.currentController) {
             this.currentController.abort();

@@ -10,6 +10,7 @@ export class StreamSwitcher {
   public currentCommand: any = null;
   private config: BotConfig;
   private stderrListeners: ((line: string) => void)[] = [];
+  private currentSettings: AdaptiveStreamSettings | null = null;
 
   constructor(config: BotConfig) {
     this.mainOutput = new PassThrough();
@@ -81,6 +82,21 @@ export class StreamSwitcher {
         hardwareAcceleration: this.config.streamOpts.hardwareAcceleration || false,
         videoCodec: this.config.streamOpts.videoCodec || "H264",
       };
+    }
+
+    // Check if stream parameters have changed
+    if (this.currentSettings) {
+      if (
+        streamSettings.width !== this.currentSettings.width ||
+        streamSettings.height !== this.currentSettings.height ||
+        streamSettings.fps !== this.currentSettings.fps
+      ) {
+        streamLogger.info("Stream parameters changed, requiring full restart", {
+          old: `${this.currentSettings.width}x${this.currentSettings.height}@${this.currentSettings.fps}`,
+          new: `${streamSettings.width}x${streamSettings.height}@${streamSettings.fps}`,
+        });
+        throw new Error("Stream parameters changed, requiring full restart");
+      }
     }
 
     // Create new FFmpeg command
@@ -328,6 +344,9 @@ export class StreamSwitcher {
       });
     });
 
+    // Update current settings after successful switch
+    this.currentSettings = streamSettings;
+
     streamLogger.info("Stream switch completed successfully", { url });
   }
 
@@ -344,5 +363,6 @@ export class StreamSwitcher {
     if (this.mainOutput && !this.mainOutput.destroyed) {
       this.mainOutput.destroy();
     }
+    this.currentSettings = null;
   }
 }
