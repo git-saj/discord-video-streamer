@@ -279,7 +279,7 @@ export class DiscordStreamBot {
           // Force reset the voice connection for parameter changes
           if (this.streamer.voiceConnection) {
             this.streamer.leaveVoice();
-            await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait for disconnection
+            await new Promise((resolve) => setTimeout(resolve, 3000)); // Wait for disconnection
           }
 
           // Fall back to full restart
@@ -297,7 +297,7 @@ export class DiscordStreamBot {
           delete this.currentStreamUrl;
 
           // Give time for cleanup
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          await new Promise((resolve) => setTimeout(resolve, 3000));
         }
       } else {
         // No StreamSwitcher available, need to do full restart
@@ -451,7 +451,7 @@ export class DiscordStreamBot {
           setTimeout(() => {
             streamLogger.warn("PlayStream taking longer than expected, continuing in background");
             resolve();
-          }, 10000);
+          }, 30000);
         });
 
         // Attach FFmpeg process to health system for monitoring
