@@ -26,6 +26,7 @@ optimized for 1080p 30fps streaming.
 
 - Node.js 22 or higher
 - FFmpeg
+- yt-dlp (for YouTube and other video platform support)
 - Discord Bot Token (using discord.js-selfbot-v13@3.7.0)
 
 ## Development Setup 🚀

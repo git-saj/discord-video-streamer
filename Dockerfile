@@ -37,10 +37,12 @@ RUN apt-get update && apt-get install -y \
     libsodium23 \
     libzmq5 \
     libzmq5-dev \
-    python3-zmq \
+    python3 \
+    python3-pip \
     dumb-init \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
+    && python3 -m pip install --no-cache-dir --break-system-packages yt-dlp==2025.8.22 pyzmq==27.0.2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install FFmpeg from BtbN builds

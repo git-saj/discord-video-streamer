@@ -96,7 +96,7 @@ class Playlist {
         this._abort?.abort();
         // Wait for previous stream resources to cleanup before starting new one
         if (this._abort) {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+          await new Promise((resolve) => setTimeout(resolve, 3000));
         }
         this._abort = new AbortController();
         this._currentInfo = next.info;
@@ -122,7 +122,7 @@ class Playlist {
                 { retries: retries - 1 },
               );
               await forceCleanupSockets();
-              await new Promise((resolve) => setTimeout(resolve, 2000));
+              await new Promise((resolve) => setTimeout(resolve, 3000));
               retries--;
             } else {
               throw error;
@@ -149,7 +149,8 @@ class Playlist {
       this._abort?.abort();
       // Wait for sockets (like ZMQ) to properly close before continuing
       if (this._abort) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await forceCleanupSockets();
+        await new Promise((resolve) => setTimeout(resolve, 3000));
       }
       this._items.unshift(queueItem);
     } else {
@@ -161,7 +162,7 @@ class Playlist {
     this._abort?.abort();
     // Perform aggressive cleanup to ensure sockets are freed
     await forceCleanupSockets();
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 3000));
   }
   async stop() {
     this._items = [];
@@ -326,6 +327,8 @@ export default {
                       abort.signal,
                     );
 
+                    let zmqErrorDetected = false;
+
                     command.on("stderr", (line) => {
                       getLogger().debug("FFmpeg stderr", { line, url });
                       // Check for socket binding errors
@@ -337,10 +340,17 @@ export default {
                           "ZMQ socket binding failed - port conflict detected",
                           { url, line },
                         );
+                        getLogger().info(
+                          "Aborting stream due to ZMQ conflict, retry will be attempted",
+                          { url },
+                        );
+                        zmqErrorDetected = true;
+                        // Abort the ffmpeg process immediately
+                        abort.abort();
                       }
                     });
 
-                    const promise = playStream(
+                    const basePromise = playStream(
                       output,
                       streamer,
                       {
@@ -349,6 +359,18 @@ export default {
                       },
                       abort.signal,
                     );
+
+                    // Wrap the promise to handle ZMQ errors
+                    const promise = basePromise.catch((error) => {
+                      if (zmqErrorDetected) {
+                        getLogger().warn(
+                          "Converting ZMQ conflict to retriable error",
+                          { url },
+                        );
+                        throw new Error("Address already in use");
+                      }
+                      throw error;
+                    });
 
                     return { controller, promise };
                   } catch (e) {
@@ -421,6 +443,8 @@ export default {
                   abort.signal,
                 );
 
+                let zmqErrorDetected = false;
+
                 command.ffmpeg.on("stderr", (line) => {
                   getLogger().debug("OBS FFmpeg stderr", { line });
                   // Check for socket binding errors in OBS streams
@@ -432,6 +456,12 @@ export default {
                       "ZMQ socket binding failed in OBS stream - port conflict detected",
                       { line },
                     );
+                    getLogger().info(
+                      "Aborting OBS stream due to ZMQ conflict, retry will be attempted",
+                    );
+                    zmqErrorDetected = true;
+                    // Abort the ffmpeg process immediately
+                    abort.abort();
                   }
                 });
 
@@ -442,7 +472,7 @@ export default {
                     getLogger().createMessageContext(message),
                   );
                 });
-                const promise = playStream(
+                const basePromise = playStream(
                   output,
                   streamer,
                   {
@@ -451,6 +481,17 @@ export default {
                   },
                   abort.signal,
                 );
+
+                // Wrap the promise to handle ZMQ errors
+                const promise = basePromise.catch((error) => {
+                  if (zmqErrorDetected) {
+                    getLogger().warn(
+                      "Converting OBS ZMQ conflict to retriable error",
+                    );
+                    throw new Error("Address already in use");
+                  }
+                  throw error;
+                });
                 const controller = {
                   get volume() {
                     return 1;
@@ -522,6 +563,8 @@ export default {
                   },
                   abort.signal,
                 );
+                let zmqErrorDetected = false;
+
                 command.ffmpeg.on("stderr", (line) => {
                   getLogger().debug("yt-dlp FFmpeg stderr", {
                     line,
@@ -536,9 +579,16 @@ export default {
                       "ZMQ socket binding failed in yt-dlp stream - port conflict detected",
                       { line, url: args[0] },
                     );
+                    getLogger().info(
+                      "Aborting yt-dlp stream due to ZMQ conflict, retry will be attempted",
+                      { url: args[0] },
+                    );
+                    zmqErrorDetected = true;
+                    // Abort the ffmpeg process immediately
+                    abort.abort();
                   }
                 });
-                const promise = playStream(
+                const basePromise = playStream(
                   output,
                   streamer,
                   {
@@ -546,6 +596,19 @@ export default {
                   },
                   abort.signal,
                 );
+
+                // Wrap the promise to handle ZMQ errors
+                const promise = basePromise.catch((error) => {
+                  if (zmqErrorDetected) {
+                    getLogger().warn(
+                      "Converting yt-dlp ZMQ conflict to retriable error",
+                      { url: args[0] },
+                    );
+                    throw new Error("Address already in use");
+                  }
+                  throw error;
+                });
+
                 return { controller, promise };
               } catch (e) {
                 errorHandler(e as Error, bot, message);
