@@ -26,7 +26,7 @@ COPY . .
 RUN pnpm build
 
 # Production stage with NVIDIA support and BtbN FFmpeg for ZMQ compatibility
-FROM nvidia/cuda:13.0.0-runtime-ubuntu24.04
+FROM nvidia/cuda:12.9.0-runtime-ubuntu24.04
 
 # Install dependencies and BtbN FFmpeg build
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
