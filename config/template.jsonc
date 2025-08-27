@@ -7,7 +7,7 @@
   "encoder": {
     "name": "software",
     "x264_preset": "superfast",
-    "x265_preset": "superfast",
+    "x265_preset": "superfast"
   },
   /* Possible values for encoder
    * {
@@ -24,8 +24,8 @@
     "level": "info",
     "enableConsole": true,
     "enableFile": true,
-    "logDir": "logs",
-  },
+    "logDir": "logs"
+  }
   /* Logging configuration
    * - level: "error", "warn", "info", or "debug"
    * - enableConsole: whether to log to console
