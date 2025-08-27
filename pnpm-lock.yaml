@@ -12,13 +12,13 @@ importers:
         version: 14.0.0(commander@14.0.0)
       "@dank074/discord-video-stream":
         specifier: https://pkg.pr.new/Discord-RE/Discord-video-stream/@dank074/discord-video-stream@474b122
-        version: https://pkg.pr.new/Discord-RE/Discord-video-stream/@dank074/discord-video-stream@474b122(discord.js-selfbot-v13@3.6.1(@discordjs/opus@0.8.0))(sodium-native@5.0.6)
+        version: https://pkg.pr.new/Discord-RE/Discord-video-stream/@dank074/discord-video-stream@474b122(discord.js-selfbot-v13@3.7.0(@discordjs/opus@0.8.0))(sodium-native@5.0.6)
       commander:
         specifier: ^14.0.0
         version: 14.0.0
       discord.js-selfbot-v13:
-        specifier: ^3.6.1
-        version: 3.6.1(@discordjs/opus@0.8.0)
+        specifier: ^3.7.0
+        version: 3.7.0(@discordjs/opus@0.8.0)
       execa:
         specifier: ^9.6.0
         version: 9.6.0
@@ -197,12 +197,12 @@ packages:
       }
     engines: { node: ">=16.11.0" }
 
-  "@discordjs/collection@1.5.3":
+  "@discordjs/collection@2.1.1":
     resolution:
       {
-        integrity: sha512-SVb428OMd3WO1paV3rm6tSjM4wC+Kecaa1EUGX7vc6/fddvw/6lg90z4QtCqm21zvVe92vMMDt9+DkIvjXImQQ==,
+        integrity: sha512-LiSusze9Tc7qF03sLCujF5iZp7K+vRNEDBZ86FT9aQAv3vxMLihUvKvpsCWiQ2DJq1tVckopKm1rxomgNUc9hg==,
       }
-    engines: { node: ">=16.11.0" }
+    engines: { node: ">=18" }
 
   "@discordjs/formatters@0.6.1":
     resolution:
@@ -440,19 +440,42 @@ packages:
         integrity: sha512-eFrYUPDVHeuwWHluTG1kwNQUEUcFjVKYwPkU8z9DR1JH3AW7JtJsG9cRVGmwz809kKtGfwGJj58juCZxEvnI/g==,
       }
 
+  "@otplib/core@12.0.1":
+    resolution:
+      {
+        integrity: sha512-4sGntwbA/AC+SbPhbsziRiD+jNDdIzsZ3JUyfZwjtKyc/wufl1pnSIaG4Uqx8ymPagujub0o92kgBnB89cuAMA==,
+      }
+
+  "@otplib/plugin-crypto@12.0.1":
+    resolution:
+      {
+        integrity: sha512-qPuhN3QrT7ZZLcLCyKOSNhuijUi9G5guMRVrxq63r9YNOxxQjPm59gVxLM+7xGnHnM6cimY57tuKsjK7y9LM1g==,
+      }
+
+  "@otplib/plugin-thirty-two@12.0.1":
+    resolution:
+      {
+        integrity: sha512-MtT+uqRso909UkbrrYpJ6XFjj9D+x2Py7KjTO9JDPhL0bJUYVu5kFP4TFZW4NFAywrAtFRxOVY261u0qwb93gA==,
+      }
+
+  "@otplib/preset-default@12.0.1":
+    resolution:
+      {
+        integrity: sha512-xf1v9oOJRyXfluBhMdpOkr+bsE+Irt+0D5uHtvg6x1eosfmHCsCC6ej/m7FXiWqdo0+ZUI6xSKDhJwc8yfiOPQ==,
+      }
+
+  "@otplib/preset-v11@12.0.1":
+    resolution:
+      {
+        integrity: sha512-9hSetMI7ECqbFiKICrNa4w70deTUfArtwXykPUvSHWOdzOlfa9ajglu7mNCntlvxycTiOAXkQGwjQCzzDEMRMg==,
+      }
+
   "@sapphire/async-queue@1.5.5":
     resolution:
       {
         integrity: sha512-cvGzxbba6sav2zZkH8GPf2oGk9yYoD5qrNWdu9fRehifgnFZJMV+nuy2nON2roRO4yQQ+v7MK/Pktl/HgfsUXg==,
       }
     engines: { node: ">=v14.0.0", npm: ">=7.0.0" }
-
-  "@sapphire/shapeshift@3.9.7":
-    resolution:
-      {
-        integrity: sha512-4It2mxPSr4OGn4HSQWGmhFMsNFGfFVhWeRPCRwbH972Ek2pzfGRZtb0pJ4Ze6oIzcyh2jw7nUDa6qGlWofgd9g==,
-      }
-    engines: { node: ">=v16" }
 
   "@sapphire/shapeshift@4.0.0":
     resolution:
@@ -864,22 +887,16 @@ packages:
         integrity: sha512-qiSlmBq9+BCdCA/L46dw8Uy93mloxsPSbwnm5yrKn2vMPiy8KyAskTF6zuV/j5BMsmOGZDPs7KjU+mjb670kfA==,
       }
 
-  discord-api-types@0.37.120:
+  discord-api-types@0.38.21:
     resolution:
       {
-        integrity: sha512-7xpNK0EiWjjDFp2nAhHXezE4OUWm7s1zhc/UXXN6hnFFU8dfoPHgV0Hx0RPiCa3ILRpdeh152icc68DGCyXYIw==,
+        integrity: sha512-E6KtXUNjZVIYP1GMjmeRdAC1xRql9xtSahRwJYpP74/hJ6Q2i2oTp6ZbFG/FUN0WqtdW2igHDsJyF2u9hV8pHQ==,
       }
 
-  discord-api-types@0.38.11:
+  discord.js-selfbot-v13@3.7.0:
     resolution:
       {
-        integrity: sha512-XN0qhcQpetkyb/49hcDHuoeUPsQqOkb17wbV/t48gUkoEDi4ajhsxqugGcxvcN17BBtI9FPPWEgzv6IhQmCwyw==,
-      }
-
-  discord.js-selfbot-v13@3.6.1:
-    resolution:
-      {
-        integrity: sha512-0RVv3u2sJZaGUKYPsUDtl4Zdbas5XuNGuR6409Qdm0/LLIcVm+677OydcCMDu9njwstwYMNWhl/8Zqpm5OrtnQ==,
+        integrity: sha512-mR2by2+SzRtOaUVgxY1qBfENxIlN3xoDs1RTIalzA9mui2LlSKjrPJfzEm+jx0pWeZMRi3cBfvfaTv7fJUSRig==,
       }
     engines: { node: ">=20.18" }
 
@@ -932,10 +949,10 @@ packages:
         integrity: sha512-OP2IUU6HeYKJi3i0z4A19kHMQoLVs4Hc+DPqqxI2h/DPZHTm/vjsfC6P0b4jCMy14XizLBqvndQ+UilD7707Jw==,
       }
 
-  fetch-cookie@2.2.0:
+  fetch-cookie@3.1.0:
     resolution:
       {
-        integrity: sha512-h9AgfjURuCgA2+2ISl8GbavpUdR+WGAM2McW/ovn4tVccegp8ZqCKWSBR8uRdM8dDNlx5WdKRWxBYUwteLDCNQ==,
+        integrity: sha512-s/XhhreJpqH0ftkGVcQt8JE9bqk+zRn4jF5mPJXWZeQMCI5odV9K+wEWYbnzFPHgQZlvPSMjS4n4yawWE8RINw==,
       }
 
   figures@6.1.0:
@@ -945,10 +962,10 @@ packages:
       }
     engines: { node: ">=18" }
 
-  find-process@1.4.10:
+  find-process@2.0.0:
     resolution:
       {
-        integrity: sha512-ncYFnWEIwL7PzmrK1yZtaccN8GhethD37RzBHG6iOZoFYB4vSmLLXfeWJjeN5nMvCJMjOtBvBBF8OgxEcikiZg==,
+        integrity: sha512-YUBQnteWGASJoEVVsOXy6XtKAY2O1FCsWnnvQ8y0YwgY1rZiKeVptnFvMu6RSELZAJOGklqseTnUGGs5D0bKmg==,
       }
     hasBin: true
 
@@ -1381,6 +1398,12 @@ packages:
         integrity: sha512-5DXOiRKwuSEcQ/l0kGCF6Q3jcADFv5tSmRaJck/OqkVFcOzutB134KRSfF0xDrL39MNnqxbHBbUUcjZIhTgb2g==,
       }
 
+  otplib@12.0.1:
+    resolution:
+      {
+        integrity: sha512-xDGvUOQjop7RDgxTQ+o4pOol0/3xSZzawTiPKRrHnQWAy0WjhNs/5HdIDJCrqC4MBynmjXgULc6YfioaxZeFgg==,
+      }
+
   p-cancelable@4.0.1:
     resolution:
       {
@@ -1511,19 +1534,6 @@ packages:
       }
     engines: { node: ">= 6" }
 
-  psl@1.15.0:
-    resolution:
-      {
-        integrity: sha512-JZd3gMVBAVQkSs6HdNZo9Sdo0LNcQeMNP3CozBJb3JYC/QUYZTnKxP+f8oWRX4rHP5EurWxqAHTSwUCjlNKa1w==,
-      }
-
-  punycode@2.3.1:
-    resolution:
-      {
-        integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==,
-      }
-    engines: { node: ">=6" }
-
   qrcode@1.5.4:
     resolution:
       {
@@ -1531,12 +1541,6 @@ packages:
       }
     engines: { node: ">=10.13.0" }
     hasBin: true
-
-  querystringify@2.2.0:
-    resolution:
-      {
-        integrity: sha512-FIqgj2EUvTa7R50u0rGsyTftzjYmv/a3hO345bZNrqabNqjtgiDMgmo4mkUjd+nzU5oF3dClKqFIPUKybUyqoQ==,
-      }
 
   readable-stream@3.6.2:
     resolution:
@@ -1563,12 +1567,6 @@ packages:
     resolution:
       {
         integrity: sha512-NKN5kMDylKuldxYLSUfrbo5Tuzh4hd+2E8NPPX02mZtn1VuREQToYe/ZdlJy+J3uCpfaiGF05e7B8W0iXbQHmg==,
-      }
-
-  requires-port@1.0.0:
-    resolution:
-      {
-        integrity: sha512-KigOCHcocU3XODJxsu8i/j8T9tzT4adHiecwORRQ0ZZFcp7ahwXuRU1m+yuO90C5ZUyGeGfocHDI14M3L3yDAQ==,
       }
 
   rimraf@3.0.2:
@@ -1766,12 +1764,32 @@ packages:
         integrity: sha512-uuVGNWzgJ4yhRaNSiubPY7OjISw4sw4E5Uv0wbjp+OzcbmVU/rsT8ujgcXJhn9ypzsgr5vlzpPqP+MBBKcGvbg==,
       }
 
-  tough-cookie@4.1.4:
+  thirty-two@1.0.2:
     resolution:
       {
-        integrity: sha512-Loo5UUvLD9ScZ6jh8beX1T6sO1w2/MpCRpEP7V280GKMVUQ0Jzar2U3UJPsrdbziLEMMhu3Ujnq//rhiFuIeag==,
+        integrity: sha512-OEI0IWCe+Dw46019YLl6V10Us5bi574EvlJEOcAkB29IzQ/mYD1A6RyNHLjZPiHCmuodxvgF6U+vZO1L15lxVA==,
       }
-    engines: { node: ">=6" }
+    engines: { node: ">=0.2.6" }
+
+  tldts-core@6.1.86:
+    resolution:
+      {
+        integrity: sha512-Je6p7pkk+KMzMv2XXKmAE3McmolOQFdxkKw0R8EYNr7sELW46JqnNeTX8ybPiQgvg1ymCoF8LXs5fzFaZvJPTA==,
+      }
+
+  tldts@6.1.86:
+    resolution:
+      {
+        integrity: sha512-WMi/OQ2axVTf/ykqCQgXiIct+mSQDFdH2fkwhPwgEwvJ1kSzZRiinb0zF2Xb8u4+OqPChmyI6MEu4EezNJz+FQ==,
+      }
+    hasBin: true
+
+  tough-cookie@5.1.2:
+    resolution:
+      {
+        integrity: sha512-FVDYdxtnj0G6Qm/DhNPSb8Ju59ULcup3tuJxkFb5K8Bv2pUXILbf0xZWU8PX8Ov19OXljbUyveOFwRMwkXzO+A==,
+      }
+    engines: { node: ">=16" }
 
   tr46@0.0.3:
     resolution:
@@ -1832,12 +1850,12 @@ packages:
         integrity: sha512-9UJ2xGDvQ43tYyVMpuHlsgApydB8ZKfVYTsLDhXkFL/6gfkp+U8xTGdh8pMJv1SpZna0zxG1DwsKZsreLbXBxw==,
       }
 
-  undici@6.21.3:
+  undici@7.15.0:
     resolution:
       {
-        integrity: sha512-gBLkYIlEnSp8pFbT64yFgGE6UIB9tAkhukC23PmMDCe5Nd+cRqKxSjw5y54MK2AZMgZfJWMaNE4nYUHgi1XEOw==,
+        integrity: sha512-7oZJCPvvMvTd0OlqWsIxTuItTpJBpU1tcbVl24FMn3xt3+VSunwUasmfPJRE57oNO1KsZ4PgA1xTdAX4hq8NyQ==,
       }
-    engines: { node: ">=18.17" }
+    engines: { node: ">=20.18.1" }
 
   unicorn-magic@0.3.0:
     resolution:
@@ -1845,19 +1863,6 @@ packages:
         integrity: sha512-+QBBXBCvifc56fsbuxZQ6Sic3wqqc3WWaqxs58gvJrcOuN83HGTCwz3oS5phzU9LthRNE9VrJCFCLUgHeeFnfA==,
       }
     engines: { node: ">=18" }
-
-  universalify@0.2.0:
-    resolution:
-      {
-        integrity: sha512-CJ1QgKmNg3CwvAv/kOFmtnEN05f0D/cn9QntgNOQlQF9dgvVTHj3t+8JPdjqawCHk7V/KA+fbUqzZ9XWhcqPUg==,
-      }
-    engines: { node: ">= 4.0.0" }
-
-  url-parse@1.5.10:
-    resolution:
-      {
-        integrity: sha512-WypcfiRhfeUP9vvF0j6rw0J3hrWrw6iZv3+22h6iRMJ/8z1Tj6XfLP4DsUix5MhMPnXpiHDoKyoZ/bdCkwBCiQ==,
-      }
 
   util-deprecate@1.0.2:
     resolution:
@@ -2078,11 +2083,11 @@ snapshots:
       enabled: 2.0.0
       kuler: 2.0.0
 
-  "@dank074/discord-video-stream@https://pkg.pr.new/Discord-RE/Discord-video-stream/@dank074/discord-video-stream@474b122(discord.js-selfbot-v13@3.6.1(@discordjs/opus@0.8.0))(sodium-native@5.0.6)":
+  "@dank074/discord-video-stream@https://pkg.pr.new/Discord-RE/Discord-video-stream/@dank074/discord-video-stream@474b122(discord.js-selfbot-v13@3.7.0(@discordjs/opus@0.8.0))(sodium-native@5.0.6)":
     dependencies:
       "@lng2004/libav.js-variant-webcodecs-avf-with-decoders": 6.7.7-bsf-full-api
       debug-level: 3.2.1
-      discord.js-selfbot-v13: 3.6.1(@discordjs/opus@0.8.0)
+      discord.js-selfbot-v13: 3.7.0(@discordjs/opus@0.8.0)
       fluent-ffmpeg: 2.1.3
       p-debounce: 4.0.0
       sharp: 0.33.5
@@ -2101,16 +2106,16 @@ snapshots:
       "@discordjs/formatters": 0.6.1
       "@discordjs/util": 1.1.1
       "@sapphire/shapeshift": 4.0.0
-      discord-api-types: 0.38.11
+      discord-api-types: 0.38.21
       fast-deep-equal: 3.1.3
       ts-mixer: 6.0.4
       tslib: 2.8.1
 
-  "@discordjs/collection@1.5.3": {}
+  "@discordjs/collection@2.1.1": {}
 
   "@discordjs/formatters@0.6.1":
     dependencies:
-      discord-api-types: 0.38.11
+      discord-api-types: 0.38.21
 
   "@discordjs/node-pre-gyp@0.4.5":
     dependencies:
@@ -2240,12 +2245,30 @@ snapshots:
 
   "@minhducsun2002/leb128@1.0.0": {}
 
-  "@sapphire/async-queue@1.5.5": {}
+  "@otplib/core@12.0.1": {}
 
-  "@sapphire/shapeshift@3.9.7":
+  "@otplib/plugin-crypto@12.0.1":
     dependencies:
-      fast-deep-equal: 3.1.3
-      lodash: 4.17.21
+      "@otplib/core": 12.0.1
+
+  "@otplib/plugin-thirty-two@12.0.1":
+    dependencies:
+      "@otplib/core": 12.0.1
+      thirty-two: 1.0.2
+
+  "@otplib/preset-default@12.0.1":
+    dependencies:
+      "@otplib/core": 12.0.1
+      "@otplib/plugin-crypto": 12.0.1
+      "@otplib/plugin-thirty-two": 12.0.1
+
+  "@otplib/preset-v11@12.0.1":
+    dependencies:
+      "@otplib/core": 12.0.1
+      "@otplib/plugin-crypto": 12.0.1
+      "@otplib/plugin-thirty-two": 12.0.1
+
+  "@sapphire/async-queue@1.5.5": {}
 
   "@sapphire/shapeshift@4.0.0":
     dependencies:
@@ -2467,24 +2490,23 @@ snapshots:
 
   dijkstrajs@1.0.3: {}
 
-  discord-api-types@0.37.120: {}
+  discord-api-types@0.38.21: {}
 
-  discord-api-types@0.38.11: {}
-
-  discord.js-selfbot-v13@3.6.1(@discordjs/opus@0.8.0):
+  discord.js-selfbot-v13@3.7.0(@discordjs/opus@0.8.0):
     dependencies:
       "@discordjs/builders": 1.11.2
-      "@discordjs/collection": 1.5.3
+      "@discordjs/collection": 2.1.1
       "@sapphire/async-queue": 1.5.5
-      "@sapphire/shapeshift": 3.9.7
-      discord-api-types: 0.37.120
-      fetch-cookie: 2.2.0
-      find-process: 1.4.10
+      "@sapphire/shapeshift": 4.0.0
+      discord-api-types: 0.38.21
+      fetch-cookie: 3.1.0
+      find-process: 2.0.0
+      otplib: 12.0.1
       prism-media: 1.3.5(@discordjs/opus@0.8.0)
       qrcode: 1.5.4
-      tough-cookie: 4.1.4
+      tough-cookie: 5.1.2
       tree-kill: 1.2.2
-      undici: 6.21.3
+      undici: 7.15.0
       werift-rtp: 0.8.4
       ws: 8.18.2
     transitivePeerDependencies:
@@ -2525,16 +2547,16 @@ snapshots:
 
   fecha@4.2.3: {}
 
-  fetch-cookie@2.2.0:
+  fetch-cookie@3.1.0:
     dependencies:
       set-cookie-parser: 2.7.1
-      tough-cookie: 4.1.4
+      tough-cookie: 5.1.2
 
   figures@6.1.0:
     dependencies:
       is-unicode-supported: 2.1.0
 
-  find-process@1.4.10:
+  find-process@2.0.0:
     dependencies:
       chalk: 4.1.2
       commander: 12.1.0
@@ -2775,6 +2797,12 @@ snapshots:
     dependencies:
       fn.name: 1.1.0
 
+  otplib@12.0.1:
+    dependencies:
+      "@otplib/core": 12.0.1
+      "@otplib/preset-default": 12.0.1
+      "@otplib/preset-v11": 12.0.1
+
   p-cancelable@4.0.1: {}
 
   p-debounce@4.0.0: {}
@@ -2826,19 +2854,11 @@ snapshots:
       kleur: 3.0.3
       sisteransi: 1.0.5
 
-  psl@1.15.0:
-    dependencies:
-      punycode: 2.3.1
-
-  punycode@2.3.1: {}
-
   qrcode@1.5.4:
     dependencies:
       dijkstrajs: 1.0.3
       pngjs: 5.0.0
       yargs: 15.4.1
-
-  querystringify@2.2.0: {}
 
   readable-stream@3.6.2:
     dependencies:
@@ -2854,8 +2874,6 @@ snapshots:
   require-directory@2.1.1: {}
 
   require-main-filename@2.0.0: {}
-
-  requires-port@1.0.0: {}
 
   rimraf@3.0.2:
     dependencies:
@@ -2984,12 +3002,17 @@ snapshots:
 
   text-hex@1.0.0: {}
 
-  tough-cookie@4.1.4:
+  thirty-two@1.0.2: {}
+
+  tldts-core@6.1.86: {}
+
+  tldts@6.1.86:
     dependencies:
-      psl: 1.15.0
-      punycode: 2.3.1
-      universalify: 0.2.0
-      url-parse: 1.5.10
+      tldts-core: 6.1.86
+
+  tough-cookie@5.1.2:
+    dependencies:
+      tldts: 6.1.86
 
   tr46@0.0.3:
     optional: true
@@ -3014,16 +3037,9 @@ snapshots:
 
   undici-types@7.8.0: {}
 
-  undici@6.21.3: {}
+  undici@7.15.0: {}
 
   unicorn-magic@0.3.0: {}
-
-  universalify@0.2.0: {}
-
-  url-parse@1.5.10:
-    dependencies:
-      querystringify: 2.2.0
-      requires-port: 1.0.0
 
   util-deprecate@1.0.2: {}
 
