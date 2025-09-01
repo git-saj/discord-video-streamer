@@ -29,48 +29,69 @@ export class Bot extends EventEmitter {
 
     this.prefix = config.prefix;
 
+    // Add error listener to Discord client
+    this._client.on("error", (error) => {
+      this.logger.error("Discord client error", { error: error.message });
+    });
+    this._client.on("warn", (warning) => {
+      this.logger.warn("Discord client warning", { warning });
+    });
+    this._client.on("disconnect", () => {
+      this.logger.info("Discord client disconnected");
+    });
+
     (async () => {
-      const modulesFile = (
-        await glob("*/**/index.js", {
-          cwd: modulesPath,
-          dotRelative: true,
-        })
-      ).map((file) => new URL(file, `${modulesPath}/`).toString());
-      const modules = await Promise.all(
-        modulesFile.map((file) =>
-          import(file).then((m) => m.default as Module),
-        ),
-      );
-      for (const module of modules) {
-        this.logger.info(`Registering module ${module.name}`, {
-          module: module.name,
-        });
-        const commands = module.register(this);
-        this._allCommandsByModule.set(module.name, commands);
-        for (const command of commands) {
-          const commandName = command.parser.name();
-          const existingCommand = this._allCommandsByName.get(commandName);
-          if (existingCommand) {
-            this.logger.warn(
-              `Command "${commandName}" already exists in module "${existingCommand[1].name}"`,
-              {
-                command: commandName,
-                existingModule: existingCommand[1].name,
-                newModule: module.name,
-              },
-            );
-            continue;
+      try {
+        const modulesFile = (
+          await glob("*/**/index.js", {
+            cwd: modulesPath,
+            dotRelative: true,
+          })
+        ).map((file) => new URL(file, `${modulesPath}/`).toString());
+        const modules = await Promise.all(
+          modulesFile.map((file) =>
+            import(file).then((m) => m.default as Module),
+          ),
+        );
+        for (const module of modules) {
+          this.logger.info(`Registering module ${module.name}`, {
+            module: module.name,
+          });
+          const commands = module.register(this);
+          this._allCommandsByModule.set(module.name, commands);
+          for (const command of commands) {
+            const commandName = command.parser.name();
+            const existingCommand = this._allCommandsByName.get(commandName);
+            if (existingCommand) {
+              this.logger.warn(
+                `Command "${commandName}" already exists in module "${existingCommand[1].name}"`,
+                {
+                  command: commandName,
+                  existingModule: existingCommand[1].name,
+                  newModule: module.name,
+                },
+              );
+              continue;
+            }
+            this._allCommandsByName.set(command.parser.name(), [
+              command,
+              module,
+            ]);
           }
-          this._allCommandsByName.set(command.parser.name(), [command, module]);
         }
+        this._client.on("messageCreate", this._handleMessage.bind(this));
+        this.client.on("ready", () => {
+          this.logger.info("Bot is ready", { userTag: this._client.user?.tag });
+          this._initialized = true;
+          this.emit("ready");
+        });
+        await this._client.login(config.token);
+      } catch (error) {
+        this.logger.logError("Bot initialization error", {
+          error: (error as Error).message,
+          stack: (error as Error).stack,
+        });
       }
-      this._client.on("messageCreate", this._handleMessage.bind(this));
-      this.client.on("ready", () => {
-        this.logger.info("Bot is ready", { userTag: this._client.user?.tag });
-        this._initialized = true;
-        this.emit("ready");
-      });
-      await this._client.login(config.token);
     })();
   }
 

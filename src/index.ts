@@ -13,6 +13,15 @@ process.on("unhandledRejection", (reason: string, p: Promise<unknown>) => {
   });
 });
 
+process.on("uncaughtException", (error: Error) => {
+  const logger = getLogger();
+  logger.logError("Uncaught Exception", {
+    error: error.message,
+    stack: error.stack,
+  });
+  process.exit(1);
+});
+
 const configPath = fileURLToPath(
   argv[2]
     ? new URL(argv[2], pathToFileURL(process.cwd()))

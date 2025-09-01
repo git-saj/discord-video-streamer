@@ -115,7 +115,7 @@ ENV NODE_ENV=production \
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD node -e "process.exit(0)" || exit 1
+    CMD curl -f http://localhost:8080/healthz || exit 1
 
 # Use dumb-init for signal handling
 ENTRYPOINT ["dumb-init", "--"]

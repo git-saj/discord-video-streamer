@@ -136,7 +136,13 @@ class Playlist {
 
         this._current = streamResult;
         await this._current.promise;
-      } catch {}
+      } catch (error) {
+        getLogger().logError("Stream playback error", {
+          error: (error as Error).message,
+          stack: (error as Error).stack,
+          stream: next?.info,
+        });
+      }
       next = this._items.shift();
     }
     this._processing = false;
