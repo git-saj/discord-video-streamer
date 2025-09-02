@@ -42,7 +42,7 @@ RUN apt-get update && apt-get install -y \
     dumb-init \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
-    && python3 -m pip install --no-cache-dir --break-system-packages yt-dlp==2025.8.22 pyzmq==27.0.2 \
+    && python3 -m pip install --no-cache-dir --break-system-packages yt-dlp==2025.08.27 pyzmq==27.0.2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install FFmpeg from BtbN builds
