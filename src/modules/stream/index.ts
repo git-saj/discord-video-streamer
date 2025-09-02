@@ -574,9 +574,16 @@ export default {
                 flags: MessageFlags.FLAGS.SUPPRESS_NOTIFICATIONS,
               });
               try {
+                let format = opts.format;
+                if (opts.height !== -1 && opts.height > 0) {
+                  format = format.replace(
+                    /bv\*/g,
+                    `bv*[height<=${opts.height}]`,
+                  );
+                }
                 const { command, output, controller } = ytdlp.ytdlp(
                   url,
-                  opts.format,
+                  format,
                   {
                     ...encoderSettings,
                     height: opts.height === -1 ? undefined : opts.height,
