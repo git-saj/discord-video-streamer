@@ -1,4 +1,6 @@
 import { Command, Option } from "@commander-js/extra-typings";
+import type { EventEmitter } from "node:events";
+import type { Readable } from "node:stream";
 import {
   prepareStream,
   playStream,
@@ -60,14 +62,50 @@ async function joinRoomIfNeeded(
 
 async function forceCleanupSockets() {
   try {
-    // Kill any lingering ffmpeg processes that might be holding the socket
-    await execAsync("pkill -f ffmpeg || true").catch(() => {});
-    // Wait a bit more for system cleanup
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    getLogger().info("Performed aggressive socket cleanup");
+    // Kill only discord-video-streamer related ffmpeg processes
+    await execAsync(
+      "pgrep -f 'discord-video-streamer' | xargs kill -9 || true",
+    ).catch(() => {});
+    await execAsync("pgrep -f 'discord.*stream' | xargs kill -9 || true").catch(
+      () => {},
+    );
+
+    // Kill any processes specifically listening on port 42069 (ZMQ port)
+    await execAsync("lsof -ti:42069 | xargs kill -9 || true").catch(() => {});
+    await execAsync(
+      "ss -tlnp | grep :42069 | grep -o 'pid=[0-9]*' | cut -d'=' -f2 | xargs kill -9 || true",
+    ).catch(() => {});
+
+    // Kill processes specifically related to discord-video-streamer with ZMQ
+    await execAsync(
+      "pgrep -f 'discord-video-streamer.*zmq' | xargs kill -9 || true",
+    ).catch(() => {});
+    await execAsync("pgrep -f 'stream.*zmq' | xargs kill -9 || true").catch(
+      () => {},
+    );
+
+    // Wait for cleanup
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    getLogger().info("Performed targeted socket cleanup");
   } catch (error) {
     const err = error as Error;
     getLogger().warn("Socket cleanup warning", { error: err.message });
+  }
+}
+
+async function isZmqPortAvailable(): Promise<boolean> {
+  try {
+    // Check if port 42069 is in use
+    const { stdout } = await execAsync(
+      "lsof -i :42069 2>/dev/null || ss -tlnp | grep :42069 2>/dev/null",
+    );
+    return stdout.trim() === "";
+  } catch (error) {
+    // If commands fail, assume port is available (or not critical)
+    getLogger().debug("Port check failed, assuming available", {
+      error: (error as Error).message,
+    });
+    return true;
   }
 }
 
@@ -157,6 +195,24 @@ class Playlist {
       if (this._abort) {
         await forceCleanupSockets();
         await new Promise((resolve) => setTimeout(resolve, 3000));
+
+        // Check if ZMQ port is available before retrying
+        let portAvailable = await isZmqPortAvailable();
+        let waitCount = 0;
+        while (!portAvailable && waitCount < 5) {
+          getLogger().warn(
+            "ZMQ port still in use, waiting longer for cleanup...",
+            { waitCount: waitCount + 1 },
+          );
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+          portAvailable = await isZmqPortAvailable();
+          waitCount++;
+        }
+        if (!portAvailable) {
+          getLogger().error(
+            "ZMQ port still unavailable after extended wait, proceeding anyway",
+          );
+        }
       }
       this._items.unshift(queueItem);
     } else {
@@ -323,33 +379,110 @@ export default {
                     flags: MessageFlags.FLAGS.SUPPRESS_NOTIFICATIONS,
                   });
                   try {
-                    const { command, output, controller } = prepareStream(
-                      url,
-                      {
-                        noTranscoding: !!opts.copy,
-                        ...encoderSettings,
-                        height: opts.height === -1 ? undefined : opts.height,
-                        customFfmpegFlags: [
-                          "-reconnect",
-                          "1",
-                          "-reconnect_at_eof",
-                          "1",
-                          "-reconnect_streamed",
-                          "1",
-                          "-reconnect_delay_max",
-                          "5",
-                          "-timeout",
-                          "10000000",
-                          "-rw_timeout",
-                          "10000000",
-                        ],
-                      },
-                      abort.signal,
-                    );
+                    // Helper function to detect URLs that should use yt-dlp
+                    const shouldUseYtdlp = (streamUrl: string): boolean => {
+                      // Use yt-dlp for .ts files from certain domains that have FFmpeg issues
+                      return (
+                        streamUrl.includes(".ts") &&
+                        (streamUrl.includes("2me2youptv2.xyz") ||
+                          streamUrl.includes("direct streaming domains"))
+                      );
+                    };
+
+                    let command: EventEmitter;
+                    let output: Readable;
+                    let controller: Controller;
+                    let streamPromise: Promise<unknown>;
+
+                    if (shouldUseYtdlp(url)) {
+                      getLogger().info("Using yt-dlp for stream", { url });
+                      const ytdlpResult = ytdlp.ytdlp(
+                        url,
+                        undefined,
+                        {
+                          noTranscoding: !!opts.copy,
+                          ...encoderSettings,
+                          height: opts.height === -1 ? undefined : opts.height,
+                          customFfmpegFlags: [
+                            "-reconnect",
+                            "1",
+                            "-reconnect_at_eof",
+                            "1",
+                            "-reconnect_streamed",
+                            "1",
+                            "-reconnect_delay_max",
+                            "5",
+                            "-timeout",
+                            "10000000",
+                            "-rw_timeout",
+                            "10000000",
+                            "-f",
+                            "mpegts",
+                            "-avoid_negative_ts",
+                            "make_zero",
+                            "-fflags",
+                            "+discardcorrupt+genpts+igndts",
+                            "-probesize",
+                            "32",
+                            "-analyzeduration",
+                            "1000000",
+                            "-user_agent",
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                            "-headers",
+                            "Referer: http://2me2youptv2.xyz/\r\nAccept: */*\r\nAccept-Language: en-US,en;q=0.9\r\nAccept-Encoding: gzip, deflate, br\r\n",
+                          ],
+                        },
+                        abort.signal,
+                      );
+                      ({ output, controller } = ytdlpResult);
+                      command = ytdlpResult.command.ffmpeg;
+                      streamPromise =
+                        ytdlpResult.promise.ffmpeg || Promise.resolve();
+                    } else {
+                      const streamResult = prepareStream(
+                        url,
+                        {
+                          noTranscoding: !!opts.copy,
+                          ...encoderSettings,
+                          height: opts.height === -1 ? undefined : opts.height,
+                          customFfmpegFlags: [
+                            "-reconnect",
+                            "1",
+                            "-reconnect_at_eof",
+                            "1",
+                            "-reconnect_streamed",
+                            "1",
+                            "-reconnect_delay_max",
+                            "5",
+                            "-timeout",
+                            "10000000",
+                            "-rw_timeout",
+                            "10000000",
+                            "-f",
+                            "mpegts",
+                            "-avoid_negative_ts",
+                            "make_zero",
+                            "-fflags",
+                            "+discardcorrupt+genpts+igndts",
+                            "-probesize",
+                            "32",
+                            "-analyzeduration",
+                            "1000000",
+                            "-user_agent",
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                            "-headers",
+                            "Referer: http://2me2youptv2.xyz/\r\nAccept: */*\r\nAccept-Language: en-US,en;q=0.9\r\nAccept-Encoding: gzip, deflate, br\r\n",
+                          ],
+                        },
+                        abort.signal,
+                      );
+                      ({ command, output, controller } = streamResult);
+                      streamPromise = Promise.resolve(); // Will be handled by playStream
+                    }
 
                     let zmqErrorDetected = false;
 
-                    command.on("stderr", (line) => {
+                    command.on("stderr", (line: string) => {
                       getLogger().debug("FFmpeg stderr", { line, url });
                       // Check for socket binding errors
                       if (
@@ -381,7 +514,7 @@ export default {
                     );
 
                     // Wrap the promise to handle ZMQ errors
-                    const promise = basePromise.catch((error) => {
+                    const streamResultPromise = basePromise.catch((error) => {
                       if (zmqErrorDetected) {
                         getLogger().warn(
                           "Converting ZMQ conflict to retriable error",
@@ -392,7 +525,7 @@ export default {
                       throw error;
                     });
 
-                    return { controller, promise };
+                    return { controller, promise: streamResultPromise };
                   } catch (e) {
                     const error = e as Error;
                     if (

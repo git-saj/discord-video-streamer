@@ -203,7 +203,7 @@ docker build -t discord-stream-bot .
 # Run the container
 docker run -d \
   --name discord-stream-bot \
-  -v $(pwd)/config.json:/app/config.json:ro \
+  -v $(pwd)/config.jsonc:/app/config.jsonc:ro \
   --restart unless-stopped \
   discord-stream-bot
 ```
@@ -226,7 +226,7 @@ When the health system is enabled (default), the bot exposes HTTP endpoints for 
 
 - `GET http://localhost:8080/health` - General health check
 - `GET http://localhost:8080/health/live` - Kubernetes liveness probe
-- `GET http://localhost:8080/health/ready` - Kubernetes readiness probe  
+- `GET http://localhost:8080/health/ready` - Kubernetes readiness probe
 - `GET http://localhost:8080/health/startup` - Kubernetes startup probe
 - `GET http://localhost:8080/health/detailed` - Detailed health and performance metrics
 
@@ -322,7 +322,7 @@ The bot includes a comprehensive health monitoring system that automatically det
 ### Auto-Recovery Features
 
 - **Discord Reconnection**: Automatically reconnects on connection drops
-- **Voice Channel Recovery**: Rejoins voice channels after disconnections  
+- **Voice Channel Recovery**: Rejoins voice channels after disconnections
 - **Stream Quality Monitoring**: Tracks frame rate, bitrate, and encoding performance
 - **Memory Management**: Automatic garbage collection and cache clearing
 - **FFmpeg Process Management**: Restarts failed encoding processes
@@ -363,7 +363,7 @@ kubectl describe pod <pod-name>
 The deployment includes:
 
 - **Liveness Probe**: Restarts container if unhealthy (checks every 30s)
-- **Readiness Probe**: Removes from service if not ready (checks every 10s)  
+- **Readiness Probe**: Removes from service if not ready (checks every 10s)
 - **Startup Probe**: Waits for initial startup (up to 60s)
 
 ### Environment Variables for Health System
@@ -381,7 +381,7 @@ MAX_RECOVERY_RETRIES=10
 CRITICAL_ERROR_THRESHOLD=5
 AUTO_RESTART_THRESHOLD=3
 
-# Monitoring intervals  
+# Monitoring intervals
 HEALTH_CHECK_INTERVAL=30000
 METRICS_INTERVAL=5000
 ENABLE_STREAM_MONITORING=true

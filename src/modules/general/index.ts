@@ -2,6 +2,7 @@ import { Command } from "@commander-js/extra-typings";
 import { createCommand } from "../index.js";
 import type { Module } from "../index.js";
 import type { Bot } from "../../bot.js";
+import { getLogger } from "../../utils/logger.js";
 
 interface StreamingState {
   isStreaming: boolean;
@@ -63,6 +64,20 @@ export default {
             streamingState,
           );
           message.reply(helpMessage);
+        },
+      ),
+      createCommand(
+        new Command("restart").description(
+          "Restart the bot by killing the container",
+        ),
+        async (message) => {
+          const logger = getLogger();
+          logger.info("Restart command received, shutting down gracefully...", {
+            user: message.author.tag,
+            channel: message.channel.id,
+          });
+          await message.reply("🔄 Restarting bot... This will take a moment.");
+          process.exit(0);
         },
       ),
     ] as const;
