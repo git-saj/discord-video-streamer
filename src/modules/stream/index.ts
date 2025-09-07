@@ -379,67 +379,7 @@ export default {
                     flags: MessageFlags.FLAGS.SUPPRESS_NOTIFICATIONS,
                   });
                   try {
-                    // Helper function to detect URLs that should use yt-dlp
-                    const shouldUseYtdlp = (streamUrl: string): boolean => {
-                      // Use yt-dlp for .ts files from certain domains that have FFmpeg issues
-                      return (
-                        streamUrl.includes(".ts") &&
-                        (streamUrl.includes("2me2youptv2.xyz") ||
-                          streamUrl.includes("direct streaming domains"))
-                      );
-                    };
-
-                    let command: EventEmitter;
-                    let output: Readable;
-                    let controller: Controller;
-                    let streamPromise: Promise<unknown>;
-
-                    if (shouldUseYtdlp(url)) {
-                      getLogger().info("Using yt-dlp for stream", { url });
-                      const ytdlpResult = ytdlp.ytdlp(
-                        url,
-                        undefined,
-                        {
-                          noTranscoding: !!opts.copy,
-                          ...encoderSettings,
-                          height: opts.height === -1 ? undefined : opts.height,
-                          customFfmpegFlags: [
-                            "-reconnect",
-                            "1",
-                            "-reconnect_at_eof",
-                            "1",
-                            "-reconnect_streamed",
-                            "1",
-                            "-reconnect_delay_max",
-                            "5",
-                            "-timeout",
-                            "10000000",
-                            "-rw_timeout",
-                            "10000000",
-                            "-f",
-                            "mpegts",
-                            "-avoid_negative_ts",
-                            "make_zero",
-                            "-fflags",
-                            "+discardcorrupt+genpts+igndts",
-                            "-probesize",
-                            "32",
-                            "-analyzeduration",
-                            "1000000",
-                            "-user_agent",
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                            "-headers",
-                            "Referer: http://2me2youptv2.xyz/\r\nAccept: */*\r\nAccept-Language: en-US,en;q=0.9\r\nAccept-Encoding: gzip, deflate, br\r\n",
-                          ],
-                        },
-                        abort.signal,
-                      );
-                      ({ output, controller } = ytdlpResult);
-                      command = ytdlpResult.command.ffmpeg;
-                      streamPromise =
-                        ytdlpResult.promise.ffmpeg || Promise.resolve();
-                    } else {
-                      const streamResult = prepareStream(
+                    const { command, output, controller } = prepareStream(
                         url,
                         {
                           noTranscoding: !!opts.copy,
@@ -457,29 +397,11 @@ export default {
                             "-timeout",
                             "10000000",
                             "-rw_timeout",
-                            "10000000",
-                            "-f",
-                            "mpegts",
-                            "-avoid_negative_ts",
-                            "make_zero",
-                            "-fflags",
-                            "+discardcorrupt+genpts+igndts",
-                            "-probesize",
-                            "32",
-                            "-analyzeduration",
-                            "1000000",
-                            "-user_agent",
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                            "-headers",
-                            "Referer: http://2me2youptv2.xyz/\r\nAccept: */*\r\nAccept-Language: en-US,en;q=0.9\r\nAccept-Encoding: gzip, deflate, br\r\n",
+                            "10000000"
                           ],
                         },
                         abort.signal,
                       );
-                      ({ command, output, controller } = streamResult);
-                      streamPromise = Promise.resolve(); // Will be handled by playStream
-                    }
-
                     let zmqErrorDetected = false;
 
                     command.on("stderr", (line: string) => {
