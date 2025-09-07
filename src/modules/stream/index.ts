@@ -380,28 +380,28 @@ export default {
                   });
                   try {
                     const { command, output, controller } = prepareStream(
-                        url,
-                        {
-                          noTranscoding: !!opts.copy,
-                          ...encoderSettings,
-                          height: opts.height === -1 ? undefined : opts.height,
-                          customFfmpegFlags: [
-                            "-reconnect",
-                            "1",
-                            "-reconnect_at_eof",
-                            "1",
-                            "-reconnect_streamed",
-                            "1",
-                            "-reconnect_delay_max",
-                            "5",
-                            "-timeout",
-                            "10000000",
-                            "-rw_timeout",
-                            "10000000"
-                          ],
-                        },
-                        abort.signal,
-                      );
+                      url,
+                      {
+                        noTranscoding: !!opts.copy,
+                        ...encoderSettings,
+                        height: opts.height === -1 ? undefined : opts.height,
+                        customFfmpegFlags: [
+                          "-reconnect",
+                          "1",
+                          "-reconnect_at_eof",
+                          "1",
+                          "-reconnect_streamed",
+                          "1",
+                          "-reconnect_delay_max",
+                          "5",
+                          "-timeout",
+                          "10000000",
+                          "-rw_timeout",
+                          "10000000",
+                        ],
+                      },
+                      abort.signal,
+                    );
                     let zmqErrorDetected = false;
 
                     command.on("stderr", (line: string) => {
