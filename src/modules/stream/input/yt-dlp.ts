@@ -9,9 +9,7 @@ export interface YtdlpFormat {
 }
 
 export async function getFormats(link: string) {
-  const result = (
-    await $`yt-dlp --cache-dir /tmp --print "%(formats)+j" ${link}`
-  ).stdout;
+  const result = (await $`yt-dlp --print "%(formats)+j" ${link}`).stdout;
   // Thank you execa for adding quotes to the output
   return JSON.parse(result.slice(1, result.length - 1)) as YtdlpFormat[];
 }
@@ -23,15 +21,15 @@ export function ytdlp(
   cancelSignal?: AbortSignal,
 ) {
   const args = [
-    "--cache-dir",
-    "/tmp",
     ...(format ? ["--format", format] : []),
     "-o",
     "-",
     "-R",
     "infinite",
-    "--downloader",
-    "http",
+    "--downloader-args",
+    "ffmpeg_i1:-reconnect 1",
+    "--downloader-args",
+    "ffmpeg_i2:-reconnect 1",
     link,
   ];
   const ytdlpProcess = $({
