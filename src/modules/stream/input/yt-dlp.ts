@@ -30,6 +30,7 @@ export function ytdlp(
     "ffmpeg_i1:-reconnect 1",
     "--downloader-args",
     "ffmpeg_i2:-reconnect 1",
+    "--cache-dir /tmp/yt-dlp",
     link,
   ];
   const ytdlpProcess = $({
