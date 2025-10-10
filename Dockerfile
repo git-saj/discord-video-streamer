@@ -57,7 +57,7 @@ RUN curl -fsSL -o ffmpeg-master-latest-linux64-gpl.tar.xz \
 
 # Create non-root user
 RUN groupadd -g 1001 -r nodejs && \
-    useradd -r -m -g nodejs -u 1001 discordbot
+    useradd -r -g nodejs -u 1001 discordbot
 
 WORKDIR /app
 
