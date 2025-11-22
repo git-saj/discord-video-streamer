@@ -110,6 +110,13 @@ repos:
       - id: prettier
         files: \.(yaml|yml)$
         args: [--write]
+        exclude: |
+          (?x)^(
+            .*\.lock$|
+            .*\.log$|
+            package-lock\.json$|
+            pnpm-lock\.yaml$
+          )$
 
 # Global settings
 default_install_hook_types:
