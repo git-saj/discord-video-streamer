@@ -29,9 +29,9 @@
   },
   "dependencies": {
     "@commander-js/extra-typings": "^14.0.0",
-    "@dank074/discord-video-stream": "https://pkg.pr.new/Discord-RE/Discord-video-stream/@dank074/discord-video-stream@261b1e6",
+    "@dank074/discord-video-stream": "https://pkg.pr.new/Discord-RE/Discord-video-stream/@dank074/discord-video-stream@e4805fa",
     "commander": "^14.0.2",
-    "discord.js-selfbot-v13": "^3.7.1",
+    "discord.js-selfbot-v13": "^3.6.1",
     "execa": "^9.6.0",
     "fluent-ffmpeg": "^2.1.3",
     "glob": "^11.1.0",

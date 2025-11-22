@@ -12,13 +12,13 @@ importers:
         specifier: ^14.0.0
         version: 14.0.0(commander@14.0.2)
       '@dank074/discord-video-stream':
-        specifier: https://pkg.pr.new/Discord-RE/Discord-video-stream/@dank074/discord-video-stream@261b1e6
-        version: https://pkg.pr.new/Discord-RE/Discord-video-stream/@dank074/discord-video-stream@261b1e6(discord.js-selfbot-v13@3.7.1(@discordjs/opus@0.8.0))(sodium-native@5.0.10(bare-url@2.1.6))
+        specifier: https://pkg.pr.new/Discord-RE/Discord-video-stream/@dank074/discord-video-stream@e4805fa
+        version: https://pkg.pr.new/Discord-RE/Discord-video-stream/@dank074/discord-video-stream@e4805fa(discord.js-selfbot-v13@3.7.1(@discordjs/opus@0.8.0))(sodium-native@5.0.10(bare-url@2.1.6))
       commander:
         specifier: ^14.0.2
         version: 14.0.2
       discord.js-selfbot-v13:
-        specifier: ^3.7.1
+        specifier: ^3.6.1
         version: 3.7.1(@discordjs/opus@0.8.0)
       execa:
         specifier: ^9.6.0
@@ -146,8 +146,8 @@ packages:
   '@dabh/diagnostics@2.0.8':
     resolution: {integrity: sha512-R4MSXTVnuMzGD7bzHdW2ZhhdPC/igELENcq5IjEverBvq5hn1SXCWcsi6eSsdWP0/Ur+SItRRjAktmdoX/8R/Q==}
 
-  '@dank074/discord-video-stream@https://pkg.pr.new/Discord-RE/Discord-video-stream/@dank074/discord-video-stream@261b1e6':
-    resolution: {tarball: https://pkg.pr.new/Discord-RE/Discord-video-stream/@dank074/discord-video-stream@261b1e6}
+  '@dank074/discord-video-stream@https://pkg.pr.new/Discord-RE/Discord-video-stream/@dank074/discord-video-stream@e4805fa':
+    resolution: {tarball: https://pkg.pr.new/Discord-RE/Discord-video-stream/@dank074/discord-video-stream@e4805fa}
     version: 5.0.2
     engines: {node: '>=21.0.0'}
     peerDependencies:
@@ -1236,7 +1236,7 @@ snapshots:
       enabled: 2.0.0
       kuler: 2.0.0
 
-  '@dank074/discord-video-stream@https://pkg.pr.new/Discord-RE/Discord-video-stream/@dank074/discord-video-stream@261b1e6(discord.js-selfbot-v13@3.7.1(@discordjs/opus@0.8.0))(sodium-native@5.0.10(bare-url@2.1.6))':
+  '@dank074/discord-video-stream@https://pkg.pr.new/Discord-RE/Discord-video-stream/@dank074/discord-video-stream@e4805fa(discord.js-selfbot-v13@3.7.1(@discordjs/opus@0.8.0))(sodium-native@5.0.10(bare-url@2.1.6))':
     dependencies:
       '@lng2004/libav.js-variant-webcodecs-avf-with-decoders': 6.8.8-simd-lto
       debug-level: 3.2.1
